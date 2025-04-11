@@ -1,11 +1,18 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useRef } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { Upload, FileSpreadsheet, Table, AlertCircle, Send, Wand2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { useState, useCallback, useRef } from "react";
+import { useDropzone } from "react-dropzone";
+import {
+  Upload,
+  FileSpreadsheet,
+  Table,
+  AlertCircle,
+  Send,
+  Wand2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Table as UITable,
   TableBody,
@@ -13,12 +20,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
+} from "@/components/ui/table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import * as XLSX from "xlsx";
+import Papa from "papaparse";
 import {
   BarChart,
   Bar,
@@ -32,11 +39,11 @@ import {
   Line,
   PieChart,
   Pie,
-  Cell
-} from 'recharts';
+  Cell,
+} from "recharts";
 
 interface Message {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
 }
 
@@ -44,39 +51,47 @@ export default function UploadPage() {
   const [data, setData] = useState<any[]>([]);
   const [originalData, setOriginalData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
-  const [error, setError] = useState<string>('');
-  const [activeTab, setActiveTab] = useState('table');
+  const [error, setError] = useState<string>("");
+  const [activeTab, setActiveTab] = useState("table");
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const cleanData = (rawData: any[]) => {
-    return rawData.map(row => {
-      const cleanRow = { ...row };
-      Object.keys(cleanRow).forEach(key => {
-        if (typeof cleanRow[key] === 'string') {
-          cleanRow[key] = cleanRow[key].trim();
-        }
-        
-        if (cleanRow[key] === '') {
-          cleanRow[key] = null;
-        }
-        
-        if (typeof cleanRow[key] === 'string' && !isNaN(Number(cleanRow[key]))) {
-          cleanRow[key] = Number(cleanRow[key]);
-        }
-        
-        if (typeof cleanRow[key] === 'string' && !isNaN(Date.parse(cleanRow[key]))) {
-          cleanRow[key] = new Date(cleanRow[key]).toISOString();
-        }
-      });
-      return cleanRow;
-    }).filter(row => Object.values(row).some(value => value !== null));
+    return rawData
+      .map((row) => {
+        const cleanRow = { ...row };
+        Object.keys(cleanRow).forEach((key) => {
+          if (typeof cleanRow[key] === "string") {
+            cleanRow[key] = cleanRow[key].trim();
+          }
+
+          if (cleanRow[key] === "") {
+            cleanRow[key] = null;
+          }
+
+          if (
+            typeof cleanRow[key] === "string" &&
+            !isNaN(Number(cleanRow[key]))
+          ) {
+            cleanRow[key] = Number(cleanRow[key]);
+          }
+
+          if (
+            typeof cleanRow[key] === "string" &&
+            !isNaN(Date.parse(cleanRow[key]))
+          ) {
+            cleanRow[key] = new Date(cleanRow[key]).toISOString();
+          }
+        });
+        return cleanRow;
+      })
+      .filter((row) => Object.values(row).some((value) => value !== null));
   };
 
   const processData = (rawData: any[]) => {
     if (rawData.length === 0) {
-      setError('No data found in the file');
+      setError("No data found in the file");
       return;
     }
 
@@ -85,17 +100,17 @@ export default function UploadPage() {
     setOriginalData(rawData);
     setColumns(headers);
     setData(cleanedData);
-    setError('');
+    setError("");
 
     const analysisMessage = generateDataAnalysis(cleanedData);
-    setMessages([{ role: 'assistant', content: analysisMessage }]);
+    setMessages([{ role: "assistant", content: analysisMessage }]);
   };
 
   const generateDataAnalysis = (data: any[]) => {
     const numRows = data.length;
     const numCols = Object.keys(data[0]).length;
     const numericCols = getNumericColumns();
-    
+
     let analysis = `I've analyzed your dataset. Here's what I found:\n\n`;
     analysis += `📊 Dataset Overview:\n`;
     analysis += `- ${numRows} rows of data\n`;
@@ -104,8 +119,8 @@ export default function UploadPage() {
 
     if (numericCols.length > 0) {
       analysis += `📈 Numeric Columns Analysis:\n`;
-      numericCols.forEach(col => {
-        const values = data.map(row => Number(row[col]));
+      numericCols.forEach((col) => {
+        const values = data.map((row) => Number(row[col]));
         const avg = values.reduce((a, b) => a + b, 0) / values.length;
         analysis += `- ${col}: Average = ${avg.toFixed(2)}\n`;
       });
@@ -119,68 +134,94 @@ export default function UploadPage() {
     if (!input.trim()) return;
 
     const userMessage = input.trim();
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
-    setInput('');
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setInput("");
 
     const response = generateResponse(userMessage);
     setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: response },
+      ]);
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 500);
   };
 
   const generateResponse = (message: string) => {
     const lowercaseMsg = message.toLowerCase();
-    let response = '';
+    let response = "";
 
-    if (lowercaseMsg.includes('correlation') || lowercaseMsg.includes('relationship')) {
+    if (
+      lowercaseMsg.includes("correlation") ||
+      lowercaseMsg.includes("relationship")
+    ) {
       const numericCols = getNumericColumns();
       if (numericCols.length >= 2) {
         response = `I've analyzed the relationships between numeric columns. Here's what I found:\n\n`;
         for (let i = 0; i < numericCols.length - 1; i++) {
           for (let j = i + 1; j < numericCols.length; j++) {
-            const correlation = calculateCorrelation(numericCols[i], numericCols[j]);
-            response += `- ${numericCols[i]} vs ${numericCols[j]}: ${Math.abs(correlation) > 0.7 ? 'Strong' : Math.abs(correlation) > 0.3 ? 'Moderate' : 'Weak'} correlation (${correlation.toFixed(2)})\n`;
+            const correlation = calculateCorrelation(
+              numericCols[i],
+              numericCols[j]
+            );
+            response += `- ${numericCols[i]} vs ${numericCols[j]}: ${
+              Math.abs(correlation) > 0.7
+                ? "Strong"
+                : Math.abs(correlation) > 0.3
+                ? "Moderate"
+                : "Weak"
+            } correlation (${correlation.toFixed(2)})\n`;
           }
         }
       } else {
-        response = "I couldn't find enough numeric columns to analyze correlations.";
+        response =
+          "I couldn't find enough numeric columns to analyze correlations.";
       }
-    } else if (lowercaseMsg.includes('summary') || lowercaseMsg.includes('overview')) {
+    } else if (
+      lowercaseMsg.includes("summary") ||
+      lowercaseMsg.includes("overview")
+    ) {
       response = generateDataAnalysis(data);
-    } else if (lowercaseMsg.includes('missing') || lowercaseMsg.includes('null')) {
+    } else if (
+      lowercaseMsg.includes("missing") ||
+      lowercaseMsg.includes("null")
+    ) {
       response = analyzeMissingValues();
     } else {
-      response = "I can help you analyze the data! You can ask about:\n- Correlations between variables\n- Summary statistics\n- Missing values\n- Specific columns or patterns";
+      response =
+        "I can help you analyze the data! You can ask about:\n- Correlations between variables\n- Summary statistics\n- Missing values\n- Specific columns or patterns";
     }
 
     return response;
   };
 
   const calculateCorrelation = (col1: string, col2: string) => {
-    const values1 = data.map(row => Number(row[col1]));
-    const values2 = data.map(row => Number(row[col2]));
-    
+    const values1 = data.map((row) => Number(row[col1]));
+    const values2 = data.map((row) => Number(row[col2]));
+
     const mean1 = values1.reduce((a, b) => a + b, 0) / values1.length;
     const mean2 = values2.reduce((a, b) => a + b, 0) / values2.length;
-    
+
     const variance1 = values1.reduce((a, b) => a + Math.pow(b - mean1, 2), 0);
     const variance2 = values2.reduce((a, b) => a + Math.pow(b - mean2, 2), 0);
-    
-    const covariance = values1.reduce((a, b, i) => a + (b - mean1) * (values2[i] - mean2), 0);
-    
+
+    const covariance = values1.reduce(
+      (a, b, i) => a + (b - mean1) * (values2[i] - mean2),
+      0
+    );
+
     return covariance / Math.sqrt(variance1 * variance2);
   };
 
   const analyzeMissingValues = () => {
     let response = "Here's an analysis of missing values:\n\n";
-    
-    columns.forEach(col => {
-      const nullCount = data.filter(row => row[col] === null).length;
-      const percentage = (nullCount / data.length * 100).toFixed(1);
+
+    columns.forEach((col) => {
+      const nullCount = data.filter((row) => row[col] === null).length;
+      const percentage = ((nullCount / data.length) * 100).toFixed(1);
       response += `- ${col}: ${nullCount} missing values (${percentage}%)\n`;
     });
-    
+
     return response;
   };
 
@@ -188,13 +229,13 @@ export default function UploadPage() {
     Papa.parse(file, {
       complete: (results) => {
         if (results.errors.length > 0) {
-          setError('Error parsing CSV file');
+          setError("Error parsing CSV file");
           return;
         }
         processData(results.data);
       },
       header: true,
-      skipEmptyLines: true
+      skipEmptyLines: true,
     });
   };
 
@@ -203,13 +244,13 @@ export default function UploadPage() {
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const workbook = XLSX.read(data, { type: "binary" });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
         processData(jsonData);
       } catch (err) {
-        setError('Error parsing Excel file');
+        setError("Error parsing Excel file");
       }
     };
     reader.readAsBinaryString(file);
@@ -219,37 +260,40 @@ export default function UploadPage() {
     const file = acceptedFiles[0];
     if (!file) return;
 
-    setError('');
-    const fileType = file.name.split('.').pop()?.toLowerCase();
+    setError("");
+    const fileType = file.name.split(".").pop()?.toLowerCase();
 
     switch (fileType) {
-      case 'csv':
+      case "csv":
         handleCSV(file);
         break;
-      case 'xlsx':
-      case 'xls':
+      case "xlsx":
+      case "xls":
         handleExcel(file);
         break;
       default:
-        setError('Unsupported file format. Please upload CSV or Excel files.');
+        setError("Unsupported file format. Please upload CSV or Excel files.");
     }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'text/csv': ['.csv'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/vnd.ms-excel': ['.xls']
+      "text/csv": [".csv"],
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+        ".xlsx",
+      ],
+      "application/vnd.ms-excel": [".xls"],
     },
-    multiple: false
+    multiple: false,
   });
 
   const getNumericColumns = () => {
     if (data.length === 0) return [];
-    return columns.filter(col => 
-      !isNaN(Number(data[0][col])) && 
-      data.every(row => !isNaN(Number(row[col])))
+    return columns.filter(
+      (col) =>
+        !isNaN(Number(data[0][col])) &&
+        data.every((row) => !isNaN(Number(row[col])))
     );
   };
 
@@ -257,9 +301,9 @@ export default function UploadPage() {
     const numericColumns = getNumericColumns();
     if (numericColumns.length < 2) return [];
 
-    return data.slice(0, 10).map(row => {
+    return data.slice(0, 10).map((row) => {
       const chartRow: any = {};
-      numericColumns.forEach(col => {
+      numericColumns.forEach((col) => {
         chartRow[col] = Number(row[col]);
       });
       return chartRow;
@@ -269,21 +313,21 @@ export default function UploadPage() {
   return (
     <div className="container mx-auto px-4 py-10">
       <h1 className="text-3xl font-bold mb-8">Upload Your Data</h1>
-      
+
       <div className="grid md:grid-cols-2 gap-8 mb-8">
         <Card className="p-6">
           <h2 className="text-xl font-semibold mb-4">File Upload</h2>
-          <div 
-            {...getRootProps()} 
+          <div
+            {...getRootProps()}
             className={`border-2 border-dashed border-primary/20 rounded-lg p-8 text-center cursor-pointer transition-colors
-              ${isDragActive ? 'bg-primary/5' : ''}`}
+              ${isDragActive ? "bg-primary/5" : ""}`}
           >
             <input {...getInputProps()} />
             <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-primary" />
             <p className="text-muted-foreground mb-4">
               {isDragActive
-                ? 'Drop the file here'
-                : 'Drag and drop your CSV or Excel file here, or click to select'}
+                ? "Drop the file here"
+                : "Drag and drop your CSV or Excel file here, or click to select"}
             </p>
             <Button>
               <Upload className="mr-2" />
@@ -299,9 +343,7 @@ export default function UploadPage() {
             <p className="text-muted-foreground mb-4">
               Connect your Google Sheets document
             </p>
-            <Button variant="outline">
-              Connect Google Sheets
-            </Button>
+            <Button variant="outline">Connect Google Sheets</Button>
           </div>
         </Card>
       </div>
@@ -355,13 +397,15 @@ export default function UploadPage() {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      {getNumericColumns().slice(1).map((col, index) => (
-                        <Bar
-                          key={col}
-                          dataKey={col}
-                          fill={`hsl(var(--chart-${(index % 5) + 1}))`}
-                        />
-                      ))}
+                      {getNumericColumns()
+                        .slice(1)
+                        .map((col, index) => (
+                          <Bar
+                            key={col}
+                            dataKey={col}
+                            fill={`hsl(var(--chart-${(index % 5) + 1}))`}
+                          />
+                        ))}
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -369,8 +413,8 @@ export default function UploadPage() {
 
               <TabsContent value="stats">
                 <div className="grid md:grid-cols-2 gap-4">
-                  {getNumericColumns().map(col => {
-                    const values = data.map(row => Number(row[col]));
+                  {getNumericColumns().map((col) => {
+                    const values = data.map((row) => Number(row[col]));
                     const sum = values.reduce((a, b) => a + b, 0);
                     const avg = sum / values.length;
                     const max = Math.max(...values);
@@ -381,7 +425,9 @@ export default function UploadPage() {
                         <h3 className="font-semibold mb-2">{col}</h3>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
-                            <span className="text-muted-foreground">Average: </span>
+                            <span className="text-muted-foreground">
+                              Average:{" "}
+                            </span>
                             {avg.toFixed(2)}
                           </div>
                           <div>
@@ -413,9 +459,9 @@ export default function UploadPage() {
                   <div
                     key={index}
                     className={`mb-4 ${
-                      message.role === 'assistant'
-                        ? 'bg-muted/50 rounded-lg p-3'
-                        : 'bg-primary/5 rounded-lg p-3'
+                      message.role === "assistant"
+                        ? "bg-muted/50 rounded-lg p-3"
+                        : "bg-primary/5 rounded-lg p-3"
                     }`}
                   >
                     <p className="whitespace-pre-wrap">{message.content}</p>
@@ -427,7 +473,7 @@ export default function UploadPage() {
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleUserMessage()}
+                  onKeyPress={(e) => e.key === "Enter" && handleUserMessage()}
                   placeholder="Ask about your data..."
                   className="flex-1"
                 />
