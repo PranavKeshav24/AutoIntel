@@ -7,7 +7,7 @@ import { MainNav } from "@/components/main-nav";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "DataInsights AI - Transform Your Data Into Insights",
+  title: "AutoIntel - Transform Your Data Into Insights",
   description: "Advanced data analysis platform powered by AI",
 };
 

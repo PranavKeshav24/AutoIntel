@@ -6,7 +6,7 @@ const teamMembers = [
   {
     name: "Anirudh P S",
     role: "Co-Founder and Developer",
-    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
+    image: "https://placehold.co/600x400",
     bio: "Undergraduate student at RNSIT, Data Scientiest with experience in working on AI platforms.",
     social: {
       linkedin: "#",
@@ -17,7 +17,7 @@ const teamMembers = [
   {
     name: "Manasvi M",
     role: "Co-Founder and Developer",
-    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
+    image: "https://placehold.co/600x400",
     bio: "Undergraduate student at RNSIT, Full-stack engineer with expertise in building scalable data platforms.",
     social: {
       linkedin: "https://www.linkedin.com/in/manasvi-m-48419725a",
@@ -28,7 +28,7 @@ const teamMembers = [
   {
     name: "Pranav Keshav",
     role: "Co-Founder and Developer",
-    image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80",
+    image: "https://placehold.co/600x400",
     bio: "Undergraduate student at RNSIT, an experienced full stack engineer and an AI entusiast.",
     social: {
       linkedin: "www.linkedin.com/in/pranav-keshav-271a19183",
@@ -39,7 +39,7 @@ const teamMembers = [
   {
     name: "Pratith Bhat V",
     role: "Co-Founder and Developer",
-    image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e",
+    image: "https://placehold.co/600x400",
     bio: "Undergraduate student at RNSIT, full stack engineer focused on creating intuitive data visualization interfaces.",
     social: {
       linkedin: "https://www.linkedin.com/in/pratith-bhat-843792288",
@@ -51,7 +51,7 @@ const teamMembers = [
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen py-20">
+    <div className="min-h-screen py-28 px-4">
       {/* Company Introduction */}
       <section className="container mx-auto px-4 mb-20">
         <h1 className="text-4xl font-bold text-center mb-6">

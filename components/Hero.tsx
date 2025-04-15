@@ -30,10 +30,10 @@ export default function Hero() {
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1 }}
-          className="flex flex-col h-full mx-auto px-4 pt-12"
+          className="flex flex-col h-full mx-auto px-4 pt-20 md:pt-12"
         >
           {/* Text Content */}
-          <div className="flex flex-col max-w-5xl mx-auto text-center mb-8 sm:mb-10 lg:mb-6">
+          <div className="flex flex-col justify-between max-w-5xl mx-auto text-center md:mb-8 lg:mb-8 mb-12">
             <motion.h1
               className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-4 sm:mb-6 leading-tight"
               initial={{ scale: 0.9 }}
