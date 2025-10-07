@@ -1,14 +1,24 @@
+// UploadPageWithLLMVisualizations.tsx
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { useDropzone } from "react-dropzone";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { SourcePicker, DataSourceType } from "@/components/upload/SourcePicker";
+import {
+  CsvExcelDrop,
+  GoogleSheetsInput,
+  FileInputGeneric,
+} from "@/components/upload/FileInputs";
+import { PreviewTable } from "@/components/upload/PreviewTable";
+import { ChartSuggestions } from "@/components/upload/ChartSuggestions";
+import { Csv, Excel, Sheets, suggestCharts } from "@/lib/connectors";
+import { TextInputLoader } from "@/components/upload/TextInput";
 import {
   Upload,
   FileSpreadsheet,
-  Table,
+  Table as TableIcon,
   AlertCircle,
   Send,
-  Wand2,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,310 +52,621 @@ import {
   Cell,
 } from "recharts";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
+type Message = { role: "user" | "assistant"; content: string };
 
-export default function UploadPage() {
+type ChartType = "bar" | "line" | "pie";
+
+type VizSeries = {
+  key: string;
+  name?: string;
+  type?: "bar" | "line" | "area";
+  color?: string;
+};
+
+type VizSchema = {
+  chartType: ChartType;
+  data?: any[];
+  xKey?: string; // for bar/line -> x axis key
+  nameKey?: string; // for pie: category key
+  series?: VizSeries[]; // series for bar/line OR for pie series[0].key == value
+  options?: Record<string, any>;
+  description?: string;
+  code?: string; // js snippet string (for display only)
+};
+
+const DEFAULT_COLORS = [
+  "#8884d8",
+  "#82ca9d",
+  "#ffc658",
+  "#ff7f50",
+  "#a4de6c",
+  "#d0ed57",
+];
+
+export default function UploadPageWithLLMVisualizations() {
+  // Data states
   const [data, setData] = useState<any[]>([]);
   const [originalData, setOriginalData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [error, setError] = useState<string>("");
-  const [activeTab, setActiveTab] = useState("table");
+  const [activeTab, setActiveTab] = useState<string>("table");
+
+  // Chat/assistant states
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  // Visualization states
+  const [vizSchema, setVizSchema] = useState<VizSchema | null>(null);
+  const [vizError, setVizError] = useState<string | null>(null);
+  const [vizLoading, setVizLoading] = useState(false);
+  const [vegaSpecs, setVegaSpecs] = useState<any[]>([]);
+  const [source, setSource] = useState<DataSourceType>("csv");
+
+  /* ---------------------------- Parsing & cleaning ------------------------- */
+
+  const normalizeRows = (rows: any[]) => {
+    if (!rows || rows.length === 0) return { rows: [], cols: [] };
+
+    // handle arrays where first row is header
+    if (Array.isArray(rows[0])) {
+      const header = rows[0].map((h: any, i: number) =>
+        h === undefined || h === null || String(h).trim() === ""
+          ? `col_${i}`
+          : String(h).trim()
+      );
+      const dataRows = rows.slice(1).map((r: any[]) => {
+        const obj: any = {};
+        header.forEach((h: string, i: number) => {
+          const v = r[i];
+          obj[h] = v === "" || v === undefined ? null : v;
+        });
+        return obj;
+      });
+      return { rows: dataRows, cols: header };
+    }
+
+    // objects -> union keys
+    const colsSet = new Set<string>();
+    rows.forEach((r) => {
+      if (r && typeof r === "object") {
+        Object.keys(r).forEach((k) => colsSet.add(String(k).trim()));
+      }
+    });
+    const cols = Array.from(colsSet);
+
+    const normalized = rows.map((r) => {
+      const obj: any = {};
+      cols.forEach((c) => {
+        const raw = (r as any)[c];
+        obj[c] = raw === "" || raw === undefined ? null : raw;
+      });
+      return obj;
+    });
+
+    return { rows: normalized, cols };
+  };
 
   const cleanData = (rawData: any[]) => {
     return rawData
       .map((row) => {
-        const cleanRow = { ...row };
-        Object.keys(cleanRow).forEach((key) => {
-          if (typeof cleanRow[key] === "string") {
-            cleanRow[key] = cleanRow[key].trim();
+        const out: any = {};
+        Object.keys(row).forEach((k) => {
+          let v = row[k];
+
+          if (v === undefined || (typeof v === "string" && v.trim() === "")) {
+            out[k] = null;
+            return;
           }
 
-          if (cleanRow[key] === "") {
-            cleanRow[key] = null;
+          if (typeof v === "string") v = v.trim();
+
+          if (typeof v === "string") {
+            const lower = v.toLowerCase();
+            if (lower === "true") {
+              out[k] = true;
+              return;
+            } else if (lower === "false") {
+              out[k] = false;
+              return;
+            }
+            // numeric with commas
+            const maybeNum = v.replace(/,/g, "");
+            if (!isNaN(Number(maybeNum))) {
+              out[k] = Number(maybeNum);
+              return;
+            }
+            // dates
+            if (!isNaN(Date.parse(v))) {
+              out[k] = new Date(v).toISOString();
+              return;
+            }
           }
 
-          if (
-            typeof cleanRow[key] === "string" &&
-            !isNaN(Number(cleanRow[key]))
-          ) {
-            cleanRow[key] = Number(cleanRow[key]);
-          }
-
-          if (
-            typeof cleanRow[key] === "string" &&
-            !isNaN(Date.parse(cleanRow[key]))
-          ) {
-            cleanRow[key] = new Date(cleanRow[key]).toISOString();
-          }
+          out[k] = v;
         });
-        return cleanRow;
+        return out;
       })
-      .filter((row) => Object.values(row).some((value) => value !== null));
+      .filter((row) =>
+        Object.values(row).some((v) => v !== null && v !== undefined)
+      );
   };
 
-  const processData = (rawData: any[]) => {
-    if (rawData.length === 0) {
-      setError("No data found in the file");
-      return;
+  /* ------------------------------- LLM call -------------------------------- */
+
+  const callLLM = async (
+    messagesForLLM: { role: string; content: string }[]
+  ) => {
+    const OPENROUTER_API_KEY =
+      process.env.NEXT_PUBLIC_OPENROUTER_API_KEY ||
+      (window as any).OPENROUTER_API_KEY; // allow both
+    if (!OPENROUTER_API_KEY) {
+      throw new Error(
+        "Missing OpenRouter API key. Set NEXT_PUBLIC_OPENROUTER_API_KEY in your env."
+      );
     }
 
-    const headers = Object.keys(rawData[0]);
-    const cleanedData = cleanData(rawData);
-    setOriginalData(rawData);
-    setColumns(headers);
-    setData(cleanedData);
-    setError("");
-
-    const analysisMessage = generateDataAnalysis(cleanedData);
-    setMessages([{ role: "assistant", content: analysisMessage }]);
-  };
-
-  const generateDataAnalysis = (data: any[]) => {
-    const numRows = data.length;
-    const numCols = Object.keys(data[0]).length;
-    const numericCols = getNumericColumns();
-
-    let analysis = `I've analyzed your dataset. Here's what I found:\n\n`;
-    analysis += `📊 Dataset Overview:\n`;
-    analysis += `- ${numRows} rows of data\n`;
-    analysis += `- ${numCols} columns\n`;
-    analysis += `- ${numericCols.length} numeric columns\n\n`;
-
-    if (numericCols.length > 0) {
-      analysis += `📈 Numeric Columns Analysis:\n`;
-      numericCols.forEach((col) => {
-        const values = data.map((row) => Number(row[col]));
-        const avg = values.reduce((a, b) => a + b, 0) / values.length;
-        analysis += `- ${col}: Average = ${avg.toFixed(2)}\n`;
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-oss-20b:free",
+          messages: messagesForLLM,
+          // you can tune max_tokens/temperature here
+          // max_tokens: 800,
+          temperature: 0.2,
+        }),
       });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`LLM error: ${res.status} ${text}`);
+      }
+
+      const json = await res.json();
+      // openrouter usually returns choices[0].message.content
+      const content =
+        json?.choices?.[0]?.message?.content || JSON.stringify(json);
+      return content;
+    } catch (err: any) {
+      console.error("LLM call failed", err);
+      throw err;
+    }
+  };
+
+  /* ----------------------- Extract JSON & code from text ------------------- */
+
+  const extractJSONFromText = (
+    text: string
+  ): { json: any | null; leftover: string } => {
+    if (!text) return { json: null, leftover: text };
+
+    // 1) fenced json block
+    const fencedJsonMatch = text.match(/```json\s*([\s\S]*?)```/i);
+    if (fencedJsonMatch && fencedJsonMatch[1]) {
+      try {
+        const parsed = JSON.parse(fencedJsonMatch[1]);
+        return { json: parsed, leftover: text.replace(fencedJsonMatch[0], "") };
+      } catch (e) {
+        // continue
+      }
     }
 
-    analysis += `\nYou can ask me questions about the data or request specific visualizations!`;
-    return analysis;
+    // 2) any fenced block
+    const fencedAnyMatch = text.match(/```([\s\S]*?)```/);
+    if (fencedAnyMatch && fencedAnyMatch[1]) {
+      try {
+        const parsed = JSON.parse(fencedAnyMatch[1]);
+        return { json: parsed, leftover: text.replace(fencedAnyMatch[0], "") };
+      } catch (e) {
+        // continue
+      }
+    }
+
+    // 3) find first balanced braces substring
+    const firstBrace = text.indexOf("{");
+    if (firstBrace === -1) return { json: null, leftover: text };
+    let stack = 0;
+    for (let i = firstBrace; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === "{") stack++;
+      else if (ch === "}") {
+        stack--;
+        if (stack === 0) {
+          const substr = text.slice(firstBrace, i + 1);
+          try {
+            const parsed = JSON.parse(substr);
+            return { json: parsed, leftover: text.slice(i + 1) };
+          } catch (e) {
+            break;
+          }
+        }
+      }
+    }
+
+    return { json: null, leftover: text };
+  };
+
+  const extractCodeFromText = (text: string): string | null => {
+    if (!text) return null;
+    const match = text.match(/```(?:javascript|js|jsx)\s*([\s\S]*?)```/i);
+    if (match && match[1]) return match[1].trim();
+    const anyMatch = text.match(/```([\s\S]*?)```/);
+    if (anyMatch && anyMatch[1]) return anyMatch[1].trim();
+    return null;
+  };
+
+  /* --------------------------- Prompt builders ----------------------------- */
+
+  const sampleRows = (rows: any[], max = 10) => {
+    if (!rows) return [];
+    if (rows.length <= max) return rows;
+    return rows.slice(0, max);
+  };
+
+  const summarizeForVizPrompt = (rows: any[], cols: string[]) => {
+    const numericCols = cols.filter((c) =>
+      rows.some(
+        (r) => r[c] !== null && r[c] !== undefined && !isNaN(Number(r[c]))
+      )
+    );
+    const sample = sampleRows(rows, 10).map((r) =>
+      cols.reduce((acc: any, c: string) => {
+        acc[c] = r[c];
+        return acc;
+      }, {} as any)
+    );
+
+    return `DATA SUMMARY:
+- rows: ${rows.length}
+- columns: ${cols.length}
+- numeric columns: ${numericCols.join(", ") || "(none)"}
+
+SAMPLE (first up to 10 rows):
+${JSON.stringify(sample, null, 2)}
+
+INSTRUCTION:
+Produce a JSON object (inside a \`\`\`json block) conforming strictly to the schema below. Also include a JavaScript React snippet in a \`\`\`javascript block that shows a React component using recharts that renders the same visualization. Return ONLY those code blocks (no extra exposition).
+
+Schema:
+{
+  "chartType": "bar" | "line" | "pie",
+  "xKey": "columnName for x axis (for bar/line)",
+  "nameKey": "category column for pie (optional)",
+  "series": [
+    { "key": "columnName", "name": "display name (optional)", "type": "bar|line (optional)", "color": "#hex (optional)"}
+  ],
+  "data": optional array of objects (if omitted, use full dataset on client),
+  "options": optional object for chart options,
+  "description": optional short text
+}
+
+Rules:
+- If chartType is 'pie', include series as a single entry with key pointing to value column and nameKey set to category column.
+- Keep JSON minimal and valid (no comments). Use ISO strings for dates if returning explicit data.
+- The JavaScript snippet should import Recharts components and show a simple React functional component named VizComponent that uses the same keys as your JSON.
+- Do not include any external libraries in the snippet beyond Recharts.
+- Prefer numeric columns for series.`;
+  };
+
+  /* ---------------------------- File processing ---------------------------- */
+
+  const processData = async (rawData: any[]) => {
+    try {
+      if (!rawData || rawData.length === 0) {
+        setError("No data found in the file");
+        return;
+      }
+
+      const { rows: normalizedRows, cols } = normalizeRows(rawData);
+      const cleaned = cleanData(normalizedRows);
+
+      if (cleaned.length === 0) {
+        setError("No usable data after cleaning");
+        return;
+      }
+
+      setOriginalData(normalizedRows);
+      setColumns(cols);
+      setData(cleaned);
+      setError("");
+
+      // initial analysis from LLM (short)
+      setLoadingAnalysis(true);
+      try {
+        const prompt = `You are a data assistant. Summarize the dataset briefly. Data summary: rows=${cleaned.length}, columns=${cols.length}`;
+        const reply = await callLLM([
+          { role: "system", content: "You are a helpful data assistant." },
+          { role: "user", content: prompt },
+        ]);
+        setMessages([{ role: "assistant", content: reply }]);
+      } catch (e) {
+        setMessages([
+          { role: "assistant", content: "Failed to fetch automated analysis." },
+        ]);
+      } finally {
+        setLoadingAnalysis(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Error processing file");
+    }
+  };
+
+  const handleCSV = async (file: File) => {
+    try {
+      const dataset = await Csv.loadCsvFromBlob(file);
+      await processData((dataset as any).rows || (dataset as any));
+    } catch (e) {
+      setError("Error parsing CSV file");
+    }
+  };
+
+  const handleExcel = async (file: File) => {
+    try {
+      const dataset = await Excel.loadExcelFromBlob(file, {} as any);
+      await processData((dataset as any).rows || (dataset as any));
+    } catch (e) {
+      setError("Error parsing Excel file");
+    }
+  };
+
+  // Replaced by modular inputs
+
+  /* -------------------- Visualization request & parsing ------------------- */
+
+  const requestVisualizationFromLLM = async () => {
+    setVizError(null);
+    setVizLoading(true);
+    try {
+      const specs = await suggestCharts(data);
+      setVegaSpecs(Array.isArray(specs) ? specs : []);
+    } catch (e: any) {
+      setVizError(e?.message || "Failed to suggest charts.");
+    } finally {
+      setVizLoading(false);
+    }
+  };
+
+  /* --------------------------- Chart rendering ---------------------------- */
+
+  const ChartRenderer: React.FC<{ schema: VizSchema }> = ({ schema }) => {
+    const chartData = schema.data ?? [];
+    // safe sampling for performance
+    const dataForRender =
+      chartData.length > 1000
+        ? chartData.filter(
+            (_: any, i: number) => i % Math.ceil(chartData.length / 1000) === 0
+          )
+        : chartData;
+
+    if (schema.chartType === "bar") {
+      const xKey = schema.xKey!;
+      const series = schema.series ?? [];
+
+      return (
+        <div style={{ width: "100%", height: 420 }}>
+          <ResponsiveContainer>
+            <BarChart data={dataForRender}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey={xKey} />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              {series.map((s, i) => (
+                <Bar
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.name || s.key}
+                  fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (schema.chartType === "line") {
+      const xKey = schema.xKey!;
+      const series = schema.series ?? [];
+
+      return (
+        <div style={{ width: "100%", height: 420 }}>
+          <ResponsiveContainer>
+            <LineChart data={dataForRender}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey={xKey} />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              {series.map((s, i) => (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  name={s.name || s.key}
+                  stroke={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
+                  dot={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    if (schema.chartType === "pie") {
+      const categoryKey = schema.nameKey ?? schema.xKey;
+      const valueKey =
+        schema.series && schema.series[0] ? schema.series[0].key : undefined;
+      if (!valueKey || !categoryKey)
+        return <div>Pie schema missing category or value key.</div>;
+      // aggregate
+      const agg: Record<string, number> = {};
+      dataForRender.forEach((r: any) => {
+        const cat = String(r[categoryKey] ?? "Unknown");
+        const val = Number(r[valueKey]) || 0;
+        agg[cat] = (agg[cat] || 0) + val;
+      });
+      const pieData = Object.entries(agg).map(([name, value]) => ({
+        name,
+        value,
+      }));
+
+      return (
+        <div style={{ width: "100%", height: 420 }}>
+          <ResponsiveContainer>
+            <PieChart>
+              <Tooltip />
+              <Legend />
+              <Pie data={pieData} dataKey="value" nameKey="name" label>
+                {pieData.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={
+                      (schema.series &&
+                        schema.series[0] &&
+                        schema.series[0].color) ||
+                      DEFAULT_COLORS[index % DEFAULT_COLORS.length]
+                    }
+                  />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
+    return <div>Unsupported chart type: {String(schema.chartType)}</div>;
+  };
+
+  /* ------------------------ Stats & correlation --------------------------- */
+
+  const getNumericColumns = () => {
+    if (data.length === 0) return [];
+    return columns.filter((col) =>
+      data.some(
+        (r) => r[col] !== null && r[col] !== undefined && !isNaN(Number(r[col]))
+      )
+    );
+  };
+
+  const calculateCorrelationBetween = (col1: string, col2: string) => {
+    const pairs = data
+      .map((r) => ({ x: Number(r[col1]), y: Number(r[col2]) }))
+      .filter((p) => !isNaN(p.x) && !isNaN(p.y));
+    if (pairs.length === 0) return 0;
+    const n = pairs.length;
+    const meanX = pairs.reduce((a, b) => a + b.x, 0) / n;
+    const meanY = pairs.reduce((a, b) => a + b.y, 0) / n;
+    const cov = pairs.reduce((a, b) => a + (b.x - meanX) * (b.y - meanY), 0);
+    const varX = pairs.reduce((a, b) => a + Math.pow(b.x - meanX, 2), 0);
+    const varY = pairs.reduce((a, b) => a + Math.pow(b.y - meanY, 2), 0);
+    if (varX === 0 || varY === 0) return 0;
+    return cov / Math.sqrt(varX * varY);
+  };
+
+  /* ------------------------- Chat with LLM (free text) -------------------- */
+
+  const sendUserMessageToLLM = async (userMessage: string) => {
+    if (!userMessage || userMessage.trim() === "") return;
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setInput("");
+    setLoadingAnalysis(true);
+
+    try {
+      const context = summarizeForVizPrompt(data.slice(0, 2000), columns);
+      const messagesForLLM = [
+        { role: "system", content: "You are a helpful data assistant." },
+        {
+          role: "user",
+          content: `${context}\n\nUser question: ${userMessage}`,
+        },
+      ];
+      const reply = await callLLM(messagesForLLM);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (err) {
+      console.error(err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Failed to fetch analysis from LLM." },
+      ]);
+    } finally {
+      setLoadingAnalysis(false);
+    }
   };
 
   const handleUserMessage = () => {
     if (!input.trim()) return;
-
-    const userMessage = input.trim();
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-    setInput("");
-
-    const response = generateResponse(userMessage);
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: response },
-      ]);
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 500);
+    sendUserMessageToLLM(input.trim());
   };
 
-  const generateResponse = (message: string) => {
-    const lowercaseMsg = message.toLowerCase();
-    let response = "";
-
-    if (
-      lowercaseMsg.includes("correlation") ||
-      lowercaseMsg.includes("relationship")
-    ) {
-      const numericCols = getNumericColumns();
-      if (numericCols.length >= 2) {
-        response = `I've analyzed the relationships between numeric columns. Here's what I found:\n\n`;
-        for (let i = 0; i < numericCols.length - 1; i++) {
-          for (let j = i + 1; j < numericCols.length; j++) {
-            const correlation = calculateCorrelation(
-              numericCols[i],
-              numericCols[j]
-            );
-            response += `- ${numericCols[i]} vs ${numericCols[j]}: ${
-              Math.abs(correlation) > 0.7
-                ? "Strong"
-                : Math.abs(correlation) > 0.3
-                ? "Moderate"
-                : "Weak"
-            } correlation (${correlation.toFixed(2)})\n`;
-          }
-        }
-      } else {
-        response =
-          "I couldn't find enough numeric columns to analyze correlations.";
-      }
-    } else if (
-      lowercaseMsg.includes("summary") ||
-      lowercaseMsg.includes("overview")
-    ) {
-      response = generateDataAnalysis(data);
-    } else if (
-      lowercaseMsg.includes("missing") ||
-      lowercaseMsg.includes("null")
-    ) {
-      response = analyzeMissingValues();
-    } else {
-      response =
-        "I can help you analyze the data! You can ask about:\n- Correlations between variables\n- Summary statistics\n- Missing values\n- Specific columns or patterns";
-    }
-
-    return response;
-  };
-
-  const calculateCorrelation = (col1: string, col2: string) => {
-    const values1 = data.map((row) => Number(row[col1]));
-    const values2 = data.map((row) => Number(row[col2]));
-
-    const mean1 = values1.reduce((a, b) => a + b, 0) / values1.length;
-    const mean2 = values2.reduce((a, b) => a + b, 0) / values2.length;
-
-    const variance1 = values1.reduce((a, b) => a + Math.pow(b - mean1, 2), 0);
-    const variance2 = values2.reduce((a, b) => a + Math.pow(b - mean2, 2), 0);
-
-    const covariance = values1.reduce(
-      (a, b, i) => a + (b - mean1) * (values2[i] - mean2),
-      0
-    );
-
-    return covariance / Math.sqrt(variance1 * variance2);
-  };
-
-  const analyzeMissingValues = () => {
-    let response = "Here's an analysis of missing values:\n\n";
-
-    columns.forEach((col) => {
-      const nullCount = data.filter((row) => row[col] === null).length;
-      const percentage = ((nullCount / data.length) * 100).toFixed(1);
-      response += `- ${col}: ${nullCount} missing values (${percentage}%)\n`;
-    });
-
-    return response;
-  };
-
-  const handleCSV = (file: File) => {
-    Papa.parse(file, {
-      complete: (results) => {
-        if (results.errors.length > 0) {
-          setError("Error parsing CSV file");
-          return;
-        }
-        processData(results.data);
-      },
-      header: true,
-      skipEmptyLines: true,
-    });
-  };
-
-  const handleExcel = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: "binary" });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
-        processData(jsonData);
-      } catch (err) {
-        setError("Error parsing Excel file");
-      }
-    };
-    reader.readAsBinaryString(file);
-  };
-
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    if (!file) return;
-
-    setError("");
-    const fileType = file.name.split(".").pop()?.toLowerCase();
-
-    switch (fileType) {
-      case "csv":
-        handleCSV(file);
-        break;
-      case "xlsx":
-      case "xls":
-        handleExcel(file);
-        break;
-      default:
-        setError("Unsupported file format. Please upload CSV or Excel files.");
-    }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "text/csv": [".csv"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-        ".xlsx",
-      ],
-      "application/vnd.ms-excel": [".xls"],
-    },
-    multiple: false,
-  });
-
-  const getNumericColumns = () => {
-    if (data.length === 0) return [];
-    return columns.filter(
-      (col) =>
-        !isNaN(Number(data[0][col])) &&
-        data.every((row) => !isNaN(Number(row[col])))
-    );
-  };
-
-  const generateChartData = () => {
-    const numericColumns = getNumericColumns();
-    if (numericColumns.length < 2) return [];
-
-    return data.slice(0, 10).map((row) => {
-      const chartRow: any = {};
-      numericColumns.forEach((col) => {
-        chartRow[col] = Number(row[col]);
-      });
-      return chartRow;
-    });
-  };
+  /* ------------------------------ Render UI ------------------------------- */
 
   return (
     <div className="container mx-auto px-4 py-10">
       <h1 className="text-3xl font-bold mb-8">Upload Your Data</h1>
 
+      <div className="mb-6">
+        <SourcePicker value={source} onChange={setSource} />
+      </div>
       <div className="grid md:grid-cols-2 gap-8 mb-8">
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">File Upload</h2>
-          <div
-            {...getRootProps()}
-            className={`border-2 border-dashed border-primary/20 rounded-lg p-8 text-center cursor-pointer transition-colors
-              ${isDragActive ? "bg-primary/5" : ""}`}
-          >
-            <input {...getInputProps()} />
-            <FileSpreadsheet className="w-12 h-12 mx-auto mb-4 text-primary" />
-            <p className="text-muted-foreground mb-4">
-              {isDragActive
-                ? "Drop the file here"
-                : "Drag and drop your CSV or Excel file here, or click to select"}
-            </p>
-            <Button>
-              <Upload className="mr-2" />
-              Select File
-            </Button>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Google Sheets</h2>
-          <div className="border-2 border-dashed border-primary/20 rounded-lg p-8 text-center">
-            <Table className="w-12 h-12 mx-auto mb-4 text-primary" />
-            <p className="text-muted-foreground mb-4">
-              Connect your Google Sheets document
-            </p>
-            <Button variant="outline">Connect Google Sheets</Button>
-          </div>
-        </Card>
+        {(source === "csv" || source === "excel") && (
+          <CsvExcelDrop onCsv={handleCSV} onExcel={handleExcel} />
+        )}
+        {source === "sheets" && (
+          <GoogleSheetsInput
+            onSubmit={async (url) => {
+              try {
+                const dataset = await Sheets.loadGoogleSheetCsvByUrl(url);
+                await processData((dataset as any).rows || (dataset as any));
+              } catch (e) {
+                setError("Failed to load Google Sheet");
+              }
+            }}
+          />
+        )}
+        {source === "json" && (
+          <FileInputGeneric
+            accept="application/json"
+            onFile={async (f) => {
+              try {
+                const text = await f.text();
+                const parsed = JSON.parse(text);
+                const rows = Array.isArray(parsed) ? parsed : parsed.rows || [];
+                await processData(rows);
+              } catch {
+                setError("Invalid JSON file");
+              }
+            }}
+          />
+        )}
+        {source === "pdf" && (
+          <FileInputGeneric
+            accept="application/pdf"
+            onFile={async () => setError("PDF preview not yet implemented")}
+          />
+        )}
+        {source === "text" && (
+          <TextInputLoader
+            onSubmit={async (rows) => {
+              await processData(rows as any[]);
+            }}
+          />
+        )}
+        {source === "mongodb" && (
+          <Card className="p-4">
+            MongoDB integration will use autointel-package docs.
+          </Card>
+        )}
       </div>
 
       {error && (
@@ -357,8 +678,12 @@ export default function UploadPage() {
 
       {data.length > 0 && (
         <div className="grid md:grid-cols-2 gap-8">
+          {/* Left: table / charts / stats */}
           <Card className="p-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => setActiveTab(String(v))}
+            >
               <TabsList className="mb-4">
                 <TabsTrigger value="table">Table View</TabsTrigger>
                 <TabsTrigger value="chart">Chart View</TabsTrigger>
@@ -366,60 +691,34 @@ export default function UploadPage() {
               </TabsList>
 
               <TabsContent value="table">
-                <div className="overflow-x-auto">
-                  <UITable>
-                    <TableHeader>
-                      <TableRow>
-                        {columns.map((column) => (
-                          <TableHead key={column}>{column}</TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {data.slice(0, 10).map((row, i) => (
-                        <TableRow key={i}>
-                          {columns.map((column) => (
-                            <TableCell key={column}>{row[column]}</TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </UITable>
-                </div>
+                <PreviewTable rows={data} columns={columns} />
               </TabsContent>
 
               <TabsContent value="chart">
-                <div className="h-[400px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={generateChartData()}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey={getNumericColumns()[0]} />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      {getNumericColumns()
-                        .slice(1)
-                        .map((col, index) => (
-                          <Bar
-                            key={col}
-                            dataKey={col}
-                            fill={`hsl(var(--chart-${(index % 5) + 1}))`}
-                          />
-                        ))}
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="mb-4">
+                  <Button
+                    onClick={requestVisualizationFromLLM}
+                    disabled={vizLoading}
+                  >
+                    {vizLoading ? "Generating..." : "Suggest Visualizations"}
+                  </Button>
                 </div>
+                {vizError && (
+                  <div className="text-destructive mb-4">{vizError}</div>
+                )}
+                <ChartSuggestions specs={vegaSpecs as any[]} />
               </TabsContent>
 
               <TabsContent value="stats">
                 <div className="grid md:grid-cols-2 gap-4">
                   {getNumericColumns().map((col) => {
-                    const values = data.map((row) => Number(row[col]));
+                    const values = data
+                      .map((r) => Number(r[col]))
+                      .filter((v) => !isNaN(v));
                     const sum = values.reduce((a, b) => a + b, 0);
-                    const avg = sum / values.length;
-                    const max = Math.max(...values);
-                    const min = Math.min(...values);
-
+                    const avg = values.length ? sum / values.length : 0;
+                    const max = values.length ? Math.max(...values) : 0;
+                    const min = values.length ? Math.min(...values) : 0;
                     return (
                       <Card key={col} className="p-4">
                         <h3 className="font-semibold mb-2">{col}</h3>
@@ -446,18 +745,50 @@ export default function UploadPage() {
                       </Card>
                     );
                   })}
+
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-2">
+                      Correlations (numeric columns)
+                    </h3>
+                    <div className="text-sm whitespace-pre-wrap">
+                      {(() => {
+                        const numericCols = getNumericColumns();
+                        if (numericCols.length < 2)
+                          return "Not enough numeric columns to compute correlations.";
+                        let s = "";
+                        for (let i = 0; i < numericCols.length - 1; i++) {
+                          for (let j = i + 1; j < numericCols.length; j++) {
+                            const corr = calculateCorrelationBetween(
+                              numericCols[i],
+                              numericCols[j]
+                            );
+                            s += `- ${numericCols[i]} vs ${
+                              numericCols[j]
+                            }: ${corr.toFixed(2)}\n`;
+                          }
+                        }
+                        return s;
+                      })()}
+                    </div>
+                  </Card>
                 </div>
               </TabsContent>
             </Tabs>
           </Card>
 
+          {/* Right: Data assistant / chat */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Data Assistant</h2>
             <div className="flex flex-col h-[600px]">
               <ScrollArea className="flex-1 mb-4 p-4 border rounded-lg">
-                {messages.map((message, index) => (
+                {loadingAnalysis && (
+                  <div className="mb-4 bg-muted/30 rounded-lg p-3">
+                    Generating analysis...
+                  </div>
+                )}
+                {messages.map((message, idx) => (
                   <div
-                    key={index}
+                    key={idx}
                     className={`mb-4 ${
                       message.role === "assistant"
                         ? "bg-muted/50 rounded-lg p-3"

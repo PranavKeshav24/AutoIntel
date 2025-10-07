@@ -9,6 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@autointel/csv": "^1.0.1",
+    "@autointel/excel": "^1.0.1",
+    "@autointel/sheets": "^1.0.1",
     "@hookform/resolvers": "^3.9.0",
     "@next/swc-wasm-nodejs": "13.5.1",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -41,6 +44,7 @@
     "@types/node": "20.6.2",
     "@types/react": "18.2.22",
     "@types/react-dom": "18.2.7",
+    "autointel-package": "^1.0.1",
     "autoprefixer": "10.4.15",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -52,10 +56,11 @@
     "framer-motion": "^12.6.3",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.446.0",
-    "next": "13.5.1",
+    "next": "^15.5.4",
     "next-themes": "^0.3.0",
-    "papaparse": "^5.4.1",
-    "postcss": "8.4.30",
+    "nvm": "^0.0.4",
+    "papaparse": "^5.5.3",
+    "postcss": "^8.5.6",
     "react": "18.2.0",
     "react-day-picker": "^8.10.1",
     "react-dom": "18.2.0",
@@ -71,8 +76,11 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "5.2.2",
     "vaul": "^0.9.9",
+    "vega": "^6.2.0",
+    "vega-embed": "^7.0.2",
+    "vega-lite": "^6.4.1",
     "xlsx": "^0.18.5",
-    "zod": "^3.23.8"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/papaparse": "^5.3.15"
