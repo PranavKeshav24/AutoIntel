@@ -27,12 +27,21 @@ export default function LoginPage() {
 
   return (
     <div className="container mx-auto px-4 py-20 max-w-md">
-      <Card className="p-6 space-y-3">
+      <Card className="p-6 space-y-4">
         <h1 className="text-2xl font-semibold">Login</h1>
         {error && <div className="text-destructive text-sm">{error}</div>}
-        <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        <Button onClick={onSubmit} disabled={loading}>{loading ? "Logging in..." : "Login"}</Button>
+        <div className="space-y-2">
+          <label className="text-sm text-muted-foreground">Email</label>
+          <Input placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm text-muted-foreground">Password</label>
+          <Input placeholder="••••••••" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        <Button onClick={onSubmit} disabled={loading} className="w-full">{loading ? "Logging in..." : "Login"}</Button>
+        <div className="text-sm text-muted-foreground text-center">
+          Don't have an account? <a className="underline" href="/register">Register</a>
+        </div>
       </Card>
     </div>
   );

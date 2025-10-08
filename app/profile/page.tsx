@@ -21,6 +21,14 @@ export default function ProfilePage() {
       try {
         const res = await getUserInfo();
         setInfo(res);
+        try {
+          const parsed = typeof res === "string" ? JSON.parse(res as any) : res;
+          setName(parsed?.name || "");
+          setPhone(parsed?.phone_number || "");
+          setPostgres(parsed?.postgres_db_url || "");
+          setSqlite(parsed?.sqlite_db_url || "");
+          setMysql(parsed?.mysql_db_url || "");
+        } catch {}
       } catch {}
     })();
   }, []);

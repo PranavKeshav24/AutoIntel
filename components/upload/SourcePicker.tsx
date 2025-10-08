@@ -10,6 +10,9 @@ export type DataSourceType =
   | "excel"
   | "sheets"
   | "mongodb"
+  | "postgres"
+  | "sqlite"
+  | "mysql"
   | "pdf"
   | "text"
   | "json";
@@ -19,6 +22,9 @@ export const SOURCE_LABELS: Record<DataSourceType, string> = {
   excel: "Excel",
   sheets: "Google Sheets",
   mongodb: "MongoDB",
+  postgres: "Postgres",
+  sqlite: "SQLite",
+  mysql: "MySQL",
   pdf: "PDF",
   text: "Text",
   json: "JSON",
@@ -30,6 +36,9 @@ export function SourcePicker({ value, onChange }: { value: DataSourceType; onCha
     { key: "excel", icon: <Upload className="w-5 h-5" />, desc: "Upload .xlsx/.xls" },
     { key: "sheets", icon: <TableIcon className="w-5 h-5" />, desc: "Link Google Sheet" },
     { key: "mongodb", icon: <Database className="w-5 h-5" />, desc: "Query MongoDB" },
+    { key: "postgres", icon: <Database className="w-5 h-5" />, desc: "Use your Postgres (Profile)" },
+    { key: "sqlite", icon: <Database className="w-5 h-5" />, desc: "Use your SQLite (Profile)" },
+    { key: "mysql", icon: <Database className="w-5 h-5" />, desc: "Use your MySQL (Profile)" },
     { key: "pdf", icon: <FileText className="w-5 h-5" />, desc: "Upload PDF" },
     { key: "text", icon: <FileText className="w-5 h-5" />, desc: "Paste Text" },
     { key: "json", icon: <FileJson className="w-5 h-5" />, desc: "Upload JSON" },

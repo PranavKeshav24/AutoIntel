@@ -21,7 +21,11 @@ export default function RegisterPage() {
       const res = await registerUser({ name, email, password });
       try {
         const parsed = JSON.parse(res as unknown as string);
-        setSessionId(parsed.session_id || "");
+        const sid = parsed.session_id || "";
+        setSessionId(sid);
+        if (sid) {
+          window.location.href = `/verify-otp?session_id=${encodeURIComponent(sid)}`;
+        }
       } catch {}
     } catch (e: any) {
       setError(e?.message || "Registration failed");
@@ -32,33 +36,30 @@ export default function RegisterPage() {
 
   return (
     <div className="container mx-auto px-4 py-20 max-w-md">
-      <Card className="p-6 space-y-3">
-        <h1 className="text-2xl font-semibold">Register</h1>
+      <Card className="p-6 space-y-4">
+        <h1 className="text-2xl font-semibold">Create your account</h1>
         {error && <div className="text-destructive text-sm">{error}</div>}
-        <Input
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <Input
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <Input
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <Button onClick={onSubmit} disabled={loading}>
-          {loading ? "Submitting..." : "Register"}
-        </Button>
+        <div className="space-y-2">
+          <label className="text-sm text-muted-foreground">Name</label>
+          <Input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm text-muted-foreground">Email</label>
+          <Input placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm text-muted-foreground">Password</label>
+          <Input placeholder="••••••••" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        <Button onClick={onSubmit} disabled={loading} className="w-full">{loading ? "Submitting..." : "Register"}</Button>
         {sessionId && (
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground text-center">
             Session: {sessionId}
           </div>
         )}
+        <div className="text-sm text-muted-foreground text-center">
+          Already have an account? <a className="underline" href="/login">Login</a>
+        </div>
       </Card>
     </div>
   );

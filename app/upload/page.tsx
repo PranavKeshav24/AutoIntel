@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SourcePicker, DataSourceType } from "@/components/upload/SourcePicker";
+import { SourcePicker, type DataSourceType } from "@/components/upload/SourcePicker";
 import {
   CsvExcelDrop,
   GoogleSheetsInput,
@@ -10,7 +10,7 @@ import {
 } from "@/components/upload/FileInputs";
 import { PreviewTable } from "@/components/upload/PreviewTable";
 import { ChartSuggestions } from "@/components/upload/ChartSuggestions";
-import { Csv, Excel, Sheets, suggestCharts } from "@/lib/connectors";
+import { Csv, ExcelConnector, SheetsConnector, runAutoIntel, aiChat } from "@/lib/connectors";
 import { TextInputLoader } from "@/components/upload/TextInput";
 import {
   Upload,
@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { queryPostgres, querySqlite, queryMysql } from "@/lib/api";
 import {
   Table as UITable,
   TableBody,
@@ -96,6 +97,7 @@ export default function UploadPageWithLLMVisualizations() {
   const [input, setInput] = useState("");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+  const sqlSources = new Set<DataSourceType>(["postgres", "sqlite", "mysql"] as any);
 
   // Visualization states
   const [vizSchema, setVizSchema] = useState<VizSchema | null>(null);
@@ -103,6 +105,7 @@ export default function UploadPageWithLLMVisualizations() {
   const [vizLoading, setVizLoading] = useState(false);
   const [vegaSpecs, setVegaSpecs] = useState<any[]>([]);
   const [source, setSource] = useState<DataSourceType>("csv");
+  const [openRouterKey, setOpenRouterKey] = useState<string>("");
 
   /* ---------------------------- Parsing & cleaning ------------------------- */
 
@@ -198,45 +201,13 @@ export default function UploadPageWithLLMVisualizations() {
   const callLLM = async (
     messagesForLLM: { role: string; content: string }[]
   ) => {
-    const OPENROUTER_API_KEY =
-      process.env.NEXT_PUBLIC_OPENROUTER_API_KEY ||
-      (window as any).OPENROUTER_API_KEY; // allow both
-    if (!OPENROUTER_API_KEY) {
-      throw new Error(
-        "Missing OpenRouter API key. Set NEXT_PUBLIC_OPENROUTER_API_KEY in your env."
-      );
-    }
-
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-oss-20b:free",
-          messages: messagesForLLM,
-          // you can tune max_tokens/temperature here
-          // max_tokens: 800,
-          temperature: 0.2,
-        }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`LLM error: ${res.status} ${text}`);
-      }
-
-      const json = await res.json();
-      // openrouter usually returns choices[0].message.content
-      const content =
-        json?.choices?.[0]?.message?.content || JSON.stringify(json);
-      return content;
-    } catch (err: any) {
-      console.error("LLM call failed", err);
-      throw err;
-    }
+    const key = openRouterKey || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+    return aiChat(messagesForLLM as any, {
+      apiKey: key,
+      model: process.env.NEXT_PUBLIC_OPENROUTER_MODEL,
+      referer: process.env.NEXT_PUBLIC_OPENROUTER_REFERER,
+      title: process.env.NEXT_PUBLIC_OPENROUTER_TITLE,
+    });
   };
 
   /* ----------------------- Extract JSON & code from text ------------------- */
@@ -376,22 +347,9 @@ Rules:
       setData(cleaned);
       setError("");
 
-      // initial analysis from LLM (short)
-      setLoadingAnalysis(true);
-      try {
-        const prompt = `You are a data assistant. Summarize the dataset briefly. Data summary: rows=${cleaned.length}, columns=${cols.length}`;
-        const reply = await callLLM([
-          { role: "system", content: "You are a helpful data assistant." },
-          { role: "user", content: prompt },
-        ]);
-        setMessages([{ role: "assistant", content: reply }]);
-      } catch (e) {
-        setMessages([
-          { role: "assistant", content: "Failed to fetch automated analysis." },
-        ]);
-      } finally {
-        setLoadingAnalysis(false);
-      }
+      setMessages([
+        { role: "assistant", content: "Dataset loaded. Ask a question or generate charts." },
+      ]);
     } catch (err) {
       console.error(err);
       setError("Error processing file");
@@ -400,7 +358,7 @@ Rules:
 
   const handleCSV = async (file: File) => {
     try {
-      const dataset = await Csv.loadCsvFromBlob(file);
+      const dataset = await Csv.loadCsvFromBlob(file, file.name as any);
       await processData((dataset as any).rows || (dataset as any));
     } catch (e) {
       setError("Error parsing CSV file");
@@ -409,7 +367,7 @@ Rules:
 
   const handleExcel = async (file: File) => {
     try {
-      const dataset = await Excel.loadExcelFromBlob(file, {} as any);
+      const dataset = await ExcelConnector.loadExcelFromBlob(file, { name: file.name } as any);
       await processData((dataset as any).rows || (dataset as any));
     } catch (e) {
       setError("Error parsing Excel file");
@@ -424,8 +382,16 @@ Rules:
     setVizError(null);
     setVizLoading(true);
     try {
-      const specs = await suggestCharts(data);
-      setVegaSpecs(Array.isArray(specs) ? specs : []);
+      const aiConfig = {
+        apiKey: process.env.NEXT_PUBLIC_OPENROUTER_API_KEY,
+        model: "openai/gpt-oss-120b:free",
+      } as any;
+      const result = await runAutoIntel(
+        { rows: data, name: "uploaded" } as any,
+        "Suggest the best 4 charts for this dataset",
+        aiConfig
+      );
+      setVegaSpecs(Array.isArray(result.specs) ? result.specs : []);
     } catch (e: any) {
       setVizError(e?.message || "Failed to suggest charts.");
     } finally {
@@ -582,16 +548,27 @@ Rules:
     setLoadingAnalysis(true);
 
     try {
-      const context = summarizeForVizPrompt(data.slice(0, 2000), columns);
-      const messagesForLLM = [
-        { role: "system", content: "You are a helpful data assistant." },
-        {
-          role: "user",
-          content: `${context}\n\nUser question: ${userMessage}`,
-        },
-      ];
-      const reply = await callLLM(messagesForLLM);
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      if (sqlSources.has(source)) {
+        let reply = "";
+        if (source === ("postgres" as DataSourceType)) reply = await queryPostgres(userMessage);
+        else if (source === ("sqlite" as DataSourceType)) reply = await querySqlite(userMessage);
+        else if (source === ("mysql" as DataSourceType)) reply = await queryMysql(userMessage);
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      } else {
+        if (!data || data.length === 0) {
+          setMessages((prev) => [...prev, { role: "assistant", content: "Load a dataset first (CSV/Excel/Sheets) to ask questions about it." }]);
+        } else {
+          const aiKey = openRouterKey || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+          const result = await runAutoIntel(
+            { rows: data, name: "uploaded" } as any,
+            userMessage,
+            { apiKey: aiKey, model: process.env.NEXT_PUBLIC_OPENROUTER_MODEL as any }
+          );
+          setVegaSpecs(Array.isArray(result.specs) ? result.specs : []);
+          const report = (result as any)?.report || "";
+          setMessages((prev) => [...prev, { role: "assistant", content: report || "" }]);
+        }
+      }
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     } catch (err) {
       console.error(err);
@@ -618,6 +595,23 @@ Rules:
       <div className="mb-6">
         <SourcePicker value={source} onChange={setSource} />
       </div>
+      <Card className="p-4 mb-6">
+        <div className="grid md:grid-cols-3 gap-3 items-end">
+          <div className="md:col-span-2">
+            <label className="text-sm text-muted-foreground">OpenRouter API Key</label>
+            <Input
+              placeholder="sk-or-v1-..."
+              value={openRouterKey}
+              onChange={(e) => setOpenRouterKey(e.target.value)}
+            />
+          </div>
+          <div>
+            <Button onClick={() => {
+              try { localStorage.setItem("OPENROUTER_API_KEY", openRouterKey || ""); } catch {}
+            }} className="w-full">Save Key</Button>
+          </div>
+        </div>
+      </Card>
       <div className="grid md:grid-cols-2 gap-8 mb-8">
         {(source === "csv" || source === "excel") && (
           <CsvExcelDrop onCsv={handleCSV} onExcel={handleExcel} />
@@ -626,7 +620,7 @@ Rules:
           <GoogleSheetsInput
             onSubmit={async (url) => {
               try {
-                const dataset = await Sheets.loadGoogleSheetCsvByUrl(url);
+                const dataset = await SheetsConnector.loadGoogleSheetCsvByUrl(url);
                 await processData((dataset as any).rows || (dataset as any));
               } catch (e) {
                 setError("Failed to load Google Sheet");
@@ -662,9 +656,18 @@ Rules:
             }}
           />
         )}
-        {source === "mongodb" && (
+        {source === ("mongodb" as DataSourceType) && (
           <Card className="p-4">
             MongoDB integration will use autointel-package docs.
+          </Card>
+        )}
+        {(source === ("postgres" as DataSourceType) || source === ("sqlite" as DataSourceType) || source === ("mysql" as DataSourceType)) && (
+          <Card className="p-4">
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">
+                Connected to {String(source).toUpperCase()} via your Profile settings. Ask a question below.
+              </div>
+            </div>
           </Card>
         )}
       </div>
@@ -676,9 +679,10 @@ Rules:
         </Alert>
       )}
 
-      {data.length > 0 && (
+      {(data.length > 0 || sqlSources.has(source)) && (
         <div className="grid md:grid-cols-2 gap-8">
           {/* Left: table / charts / stats */}
+          {sqlSources.has(source as any) ? null : (
           <Card className="p-6">
             <Tabs
               value={activeTab}
@@ -775,10 +779,14 @@ Rules:
               </TabsContent>
             </Tabs>
           </Card>
+          )}
 
           {/* Right: Data assistant / chat */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-4">Data Assistant</h2>
+            {sqlSources.has(source as any) && (
+              <div className="mb-3 text-sm text-muted-foreground">Chatting with your {source.toUpperCase()} database.</div>
+            )}
             <div className="flex flex-col h-[600px]">
               <ScrollArea className="flex-1 mb-4 p-4 border rounded-lg">
                 {loadingAnalysis && (
