@@ -1,827 +1,641 @@
-// UploadPageWithLLMVisualizations.tsx
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { SourcePicker, type DataSourceType } from "@/components/upload/SourcePicker";
+import React, { useState, useRef, useEffect } from "react";
 import {
-  CsvExcelDrop,
-  GoogleSheetsInput,
-  FileInputGeneric,
-} from "@/components/upload/FileInputs";
+  DataSet,
+  OpenRouterConfig,
+  VisualizationSpec,
+  DataCleaningOptions,
+  DataSourceType,
+} from "@/lib/types";
+import { DataProcessor } from "@/lib/dataProcessor";
+import { CsvHandler } from "@/components/upload/CSVHandler";
+import { ExcelHandler } from "@/components/upload/ExcelHandler";
+import { SheetsHandler } from "@/components/upload/SheetsHandler";
+import {
+  JsonHandler,
+  TextPdfHandler,
+  DatabaseHandler,
+  RedditHandler,
+  AdSenseHandler,
+} from "@/components/upload/OtherHandlers";
+import { DataCleaning } from "@/components/upload/DataCleaning";
 import { PreviewTable } from "@/components/upload/PreviewTable";
-import { ChartSuggestions } from "@/components/upload/ChartSuggestions";
-import { Csv, ExcelConnector, SheetsConnector, runAutoIntel, aiChat } from "@/lib/connectors";
-import { TextInputLoader } from "@/components/upload/TextInput";
-import {
-  Upload,
-  FileSpreadsheet,
-  Table as TableIcon,
-  AlertCircle,
-  Send,
-  Copy,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { queryPostgres, querySqlite, queryMysql } from "@/lib/api";
-import {
-  Table as UITable,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import * as XLSX from "xlsx";
-import Papa from "papaparse";
+import { Badge } from "@/components/ui/badge";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+  AlertCircle,
+  Send,
+  FileText,
+  BarChart3,
+  Table2,
+  Sparkles,
+  Download,
+  FileSpreadsheet,
+  Link as LinkIcon,
+  FileJson,
+  Database,
+  MessageSquare,
+  DollarSign,
+} from "lucide-react";
+import VegaLiteRenderer from "@/components/VegaLiteRenderer";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = { role: "user" | "assistant"; content: string; html?: string };
 
-type ChartType = "bar" | "line" | "pie";
-
-type VizSeries = {
-  key: string;
-  name?: string;
-  type?: "bar" | "line" | "area";
-  color?: string;
-};
-
-type VizSchema = {
-  chartType: ChartType;
-  data?: any[];
-  xKey?: string; // for bar/line -> x axis key
-  nameKey?: string; // for pie: category key
-  series?: VizSeries[]; // series for bar/line OR for pie series[0].key == value
-  options?: Record<string, any>;
-  description?: string;
-  code?: string; // js snippet string (for display only)
-};
-
-const DEFAULT_COLORS = [
-  "#8884d8",
-  "#82ca9d",
-  "#ffc658",
-  "#ff7f50",
-  "#a4de6c",
-  "#d0ed57",
+const DATA_SOURCES: {
+  value: DataSourceType;
+  label: string;
+  icon: any;
+  category: string;
+}[] = [
+  { value: "csv", label: "CSV File", icon: FileSpreadsheet, category: "Files" },
+  { value: "excel", label: "Excel", icon: FileSpreadsheet, category: "Files" },
+  {
+    value: "sheets",
+    label: "Google Sheets",
+    icon: LinkIcon,
+    category: "Files",
+  },
+  { value: "json", label: "JSON", icon: FileJson, category: "Files" },
+  { value: "text", label: "Text File", icon: FileText, category: "Files" },
+  { value: "pdf", label: "PDF", icon: FileText, category: "Files" },
+  {
+    value: "postgres",
+    label: "PostgreSQL",
+    icon: Database,
+    category: "Databases",
+  },
+  { value: "mysql", label: "MySQL", icon: Database, category: "Databases" },
+  { value: "sqlite", label: "SQLite", icon: Database, category: "Databases" },
+  { value: "mongodb", label: "MongoDB", icon: Database, category: "Databases" },
+  { value: "reddit", label: "Reddit", icon: MessageSquare, category: "APIs" },
+  {
+    value: "adsense",
+    label: "Google AdSense",
+    icon: DollarSign,
+    category: "APIs",
+  },
 ];
 
-export default function UploadPageWithLLMVisualizations() {
-  // Data states
-  const [data, setData] = useState<any[]>([]);
-  const [originalData, setOriginalData] = useState<any[]>([]);
-  const [columns, setColumns] = useState<string[]>([]);
-  const [error, setError] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<string>("table");
-
-  // Chat/assistant states
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
-  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
-  const sqlSources = new Set<DataSourceType>(["postgres", "sqlite", "mysql"] as any);
-
-  // Visualization states
-  const [vizSchema, setVizSchema] = useState<VizSchema | null>(null);
-  const [vizError, setVizError] = useState<string | null>(null);
-  const [vizLoading, setVizLoading] = useState(false);
-  const [vegaSpecs, setVegaSpecs] = useState<any[]>([]);
+export default function UploadPage() {
   const [source, setSource] = useState<DataSourceType>("csv");
+  const [dataset, setDataset] = useState<DataSet | null>(null);
+  const [originalDataset, setOriginalDataset] = useState<DataSet | null>(null);
+  const [error, setError] = useState<string>("");
   const [openRouterKey, setOpenRouterKey] = useState<string>("");
 
-  /* ---------------------------- Parsing & cleaning ------------------------- */
+  // Cleaning options
+  const [cleaningOptions, setCleaningOptions] = useState<DataCleaningOptions>({
+    removeEmptyRows: true,
+    removeDuplicates: false,
+    trimWhitespace: true,
+    handleMissingValues: "keep",
+  });
 
-  const normalizeRows = (rows: any[]) => {
-    if (!rows || rows.length === 0) return { rows: [], cols: [] };
+  // Chat states
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-    // handle arrays where first row is header
-    if (Array.isArray(rows[0])) {
-      const header = rows[0].map((h: any, i: number) =>
-        h === undefined || h === null || String(h).trim() === ""
-          ? `col_${i}`
-          : String(h).trim()
-      );
-      const dataRows = rows.slice(1).map((r: any[]) => {
-        const obj: any = {};
-        header.forEach((h: string, i: number) => {
-          const v = r[i];
-          obj[h] = v === "" || v === undefined ? null : v;
-        });
-        return obj;
-      });
-      return { rows: dataRows, cols: header };
-    }
+  // Visualization states
+  const [visualizations, setVisualizations] = useState<VisualizationSpec[]>([]);
+  const [vizLoading, setVizLoading] = useState(false);
 
-    // objects -> union keys
-    const colsSet = new Set<string>();
-    rows.forEach((r) => {
-      if (r && typeof r === "object") {
-        Object.keys(r).forEach((k) => colsSet.add(String(k).trim()));
-      }
-    });
-    const cols = Array.from(colsSet);
+  // Active tab
+  const [activeTab, setActiveTab] = useState<string>("table");
 
-    const normalized = rows.map((r) => {
-      const obj: any = {};
-      cols.forEach((c) => {
-        const raw = (r as any)[c];
-        obj[c] = raw === "" || raw === undefined ? null : raw;
-      });
-      return obj;
-    });
-
-    return { rows: normalized, cols };
-  };
-
-  const cleanData = (rawData: any[]) => {
-    return rawData
-      .map((row) => {
-        const out: any = {};
-        Object.keys(row).forEach((k) => {
-          let v = row[k];
-
-          if (v === undefined || (typeof v === "string" && v.trim() === "")) {
-            out[k] = null;
-            return;
-          }
-
-          if (typeof v === "string") v = v.trim();
-
-          if (typeof v === "string") {
-            const lower = v.toLowerCase();
-            if (lower === "true") {
-              out[k] = true;
-              return;
-            } else if (lower === "false") {
-              out[k] = false;
-              return;
-            }
-            // numeric with commas
-            const maybeNum = v.replace(/,/g, "");
-            if (!isNaN(Number(maybeNum))) {
-              out[k] = Number(maybeNum);
-              return;
-            }
-            // dates
-            if (!isNaN(Date.parse(v))) {
-              out[k] = new Date(v).toISOString();
-              return;
-            }
-          }
-
-          out[k] = v;
-        });
-        return out;
-      })
-      .filter((row) =>
-        Object.values(row).some((v) => v !== null && v !== undefined)
-      );
-  };
-
-  /* ------------------------------- LLM call -------------------------------- */
-
-  const callLLM = async (
-    messagesForLLM: { role: string; content: string }[]
-  ) => {
-    const key = openRouterKey || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-    return aiChat(messagesForLLM as any, {
-      apiKey: key,
-      model: process.env.NEXT_PUBLIC_OPENROUTER_MODEL,
-      referer: process.env.NEXT_PUBLIC_OPENROUTER_REFERER,
-      title: process.env.NEXT_PUBLIC_OPENROUTER_TITLE,
-    });
-  };
-
-  /* ----------------------- Extract JSON & code from text ------------------- */
-
-  const extractJSONFromText = (
-    text: string
-  ): { json: any | null; leftover: string } => {
-    if (!text) return { json: null, leftover: text };
-
-    // 1) fenced json block
-    const fencedJsonMatch = text.match(/```json\s*([\s\S]*?)```/i);
-    if (fencedJsonMatch && fencedJsonMatch[1]) {
-      try {
-        const parsed = JSON.parse(fencedJsonMatch[1]);
-        return { json: parsed, leftover: text.replace(fencedJsonMatch[0], "") };
-      } catch (e) {
-        // continue
-      }
-    }
-
-    // 2) any fenced block
-    const fencedAnyMatch = text.match(/```([\s\S]*?)```/);
-    if (fencedAnyMatch && fencedAnyMatch[1]) {
-      try {
-        const parsed = JSON.parse(fencedAnyMatch[1]);
-        return { json: parsed, leftover: text.replace(fencedAnyMatch[0], "") };
-      } catch (e) {
-        // continue
-      }
-    }
-
-    // 3) find first balanced braces substring
-    const firstBrace = text.indexOf("{");
-    if (firstBrace === -1) return { json: null, leftover: text };
-    let stack = 0;
-    for (let i = firstBrace; i < text.length; i++) {
-      const ch = text[i];
-      if (ch === "{") stack++;
-      else if (ch === "}") {
-        stack--;
-        if (stack === 0) {
-          const substr = text.slice(firstBrace, i + 1);
-          try {
-            const parsed = JSON.parse(substr);
-            return { json: parsed, leftover: text.slice(i + 1) };
-          } catch (e) {
-            break;
-          }
-        }
-      }
-    }
-
-    return { json: null, leftover: text };
-  };
-
-  const extractCodeFromText = (text: string): string | null => {
-    if (!text) return null;
-    const match = text.match(/```(?:javascript|js|jsx)\s*([\s\S]*?)```/i);
-    if (match && match[1]) return match[1].trim();
-    const anyMatch = text.match(/```([\s\S]*?)```/);
-    if (anyMatch && anyMatch[1]) return anyMatch[1].trim();
-    return null;
-  };
-
-  /* --------------------------- Prompt builders ----------------------------- */
-
-  const sampleRows = (rows: any[], max = 10) => {
-    if (!rows) return [];
-    if (rows.length <= max) return rows;
-    return rows.slice(0, max);
-  };
-
-  const summarizeForVizPrompt = (rows: any[], cols: string[]) => {
-    const numericCols = cols.filter((c) =>
-      rows.some(
-        (r) => r[c] !== null && r[c] !== undefined && !isNaN(Number(r[c]))
-      )
-    );
-    const sample = sampleRows(rows, 10).map((r) =>
-      cols.reduce((acc: any, c: string) => {
-        acc[c] = r[c];
-        return acc;
-      }, {} as any)
-    );
-
-    return `DATA SUMMARY:
-- rows: ${rows.length}
-- columns: ${cols.length}
-- numeric columns: ${numericCols.join(", ") || "(none)"}
-
-SAMPLE (first up to 10 rows):
-${JSON.stringify(sample, null, 2)}
-
-INSTRUCTION:
-Produce a JSON object (inside a \`\`\`json block) conforming strictly to the schema below. Also include a JavaScript React snippet in a \`\`\`javascript block that shows a React component using recharts that renders the same visualization. Return ONLY those code blocks (no extra exposition).
-
-Schema:
-{
-  "chartType": "bar" | "line" | "pie",
-  "xKey": "columnName for x axis (for bar/line)",
-  "nameKey": "category column for pie (optional)",
-  "series": [
-    { "key": "columnName", "name": "display name (optional)", "type": "bar|line (optional)", "color": "#hex (optional)"}
-  ],
-  "data": optional array of objects (if omitted, use full dataset on client),
-  "options": optional object for chart options,
-  "description": optional short text
-}
-
-Rules:
-- If chartType is 'pie', include series as a single entry with key pointing to value column and nameKey set to category column.
-- Keep JSON minimal and valid (no comments). Use ISO strings for dates if returning explicit data.
-- The JavaScript snippet should import Recharts components and show a simple React functional component named VizComponent that uses the same keys as your JSON.
-- Do not include any external libraries in the snippet beyond Recharts.
-- Prefer numeric columns for series.`;
-  };
-
-  /* ---------------------------- File processing ---------------------------- */
-
-  const processData = async (rawData: any[]) => {
+  useEffect(() => {
     try {
-      if (!rawData || rawData.length === 0) {
-        setError("No data found in the file");
-        return;
-      }
+      const saved = localStorage.getItem("OPENROUTER_API_KEY");
+      if (saved) setOpenRouterKey(saved);
+    } catch {}
+  }, []);
 
-      const { rows: normalizedRows, cols } = normalizeRows(rawData);
-      const cleaned = cleanData(normalizedRows);
+  const config: OpenRouterConfig = {
+    apiKey: openRouterKey || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || "",
+    model: process.env.NEXT_PUBLIC_OPENROUTER_MODEL,
+    referer: process.env.NEXT_PUBLIC_OPENROUTER_REFERER,
+    title: process.env.NEXT_PUBLIC_OPENROUTER_TITLE,
+  };
 
-      if (cleaned.length === 0) {
-        setError("No usable data after cleaning");
-        return;
-      }
+  const handleDataLoaded = (ds: DataSet) => {
+    setDataset(ds);
+    setOriginalDataset(ds);
+    setError("");
+    setMessages([
+      {
+        role: "assistant",
+        content: `✓ Dataset loaded! ${ds.schema.rowCount} rows × ${ds.schema.fields.length} columns from ${ds.source.kind}. Ready for analysis.`,
+      },
+    ]);
+    setActiveTab("table");
+  };
 
-      setOriginalData(normalizedRows);
-      setColumns(cols);
-      setData(cleaned);
+  const handleError = (err: string) => {
+    setError(err);
+  };
+
+  const saveApiKey = () => {
+    try {
+      localStorage.setItem("OPENROUTER_API_KEY", openRouterKey);
       setError("");
-
       setMessages([
-        { role: "assistant", content: "Dataset loaded. Ask a question or generate charts." },
+        { role: "assistant", content: "✓ API key saved successfully!" },
       ]);
-    } catch (err) {
+    } catch {
+      setError("Failed to save API key");
+    }
+  };
+
+  const applyCleaning = () => {
+    if (!originalDataset) return;
+
+    const cleaned = DataProcessor.applyCleaningOptions(
+      originalDataset,
+      cleaningOptions
+    );
+    setDataset(cleaned);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        content: `✓ Data cleaned! ${cleaned.schema.rowCount} rows remaining (${
+          originalDataset.schema.rowCount - cleaned.schema.rowCount
+        } removed).`,
+      },
+    ]);
+  };
+
+  const resetData = () => {
+    if (originalDataset) {
+      setDataset(originalDataset);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "✓ Data reset to original state." },
+      ]);
+    }
+  };
+
+  // const saveApiKey = () => {
+  //   try {
+  //     localStorage.setItem("OPENROUTER_API_KEY", openRouterKey);
+  //     alert("API key saved!");
+  //   } catch {
+  //     alert("Failed to save API key");
+  //   }
+  // };
+
+  const sendMessage = async () => {
+    if (!input.trim() || !dataset) return;
+
+    const userMessage = input.trim();
+    setInput("");
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setLoading(true);
+
+    try {
+      // Determine if this is a visualization, report, or query request
+      const isVizRequest = /chart|graph|plot|visual|show me/i.test(userMessage);
+      const isReportRequest = /report|summary|document|pdf/i.test(userMessage);
+
+      if (isReportRequest) {
+        // Generate report
+        const response = await fetch("/api/llm/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataset, query: userMessage, config }),
+        });
+
+        if (!response.ok) throw new Error("Failed to generate report");
+
+        const data = await response.json();
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "I've generated a comprehensive report for you.",
+            html: data.htmlMarkdown,
+          },
+        ]);
+      } else {
+        // Regular analysis
+        const response = await fetch("/api/llm/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataset, query: userMessage, config }),
+        });
+
+        if (!response.ok) throw new Error("Failed to analyze data");
+
+        const data = await response.json();
+
+        if (data.visualizations && data.visualizations.length > 0) {
+          setVisualizations(data.visualizations);
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: data.answer },
+        ]);
+      }
+
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } catch (err: any) {
       console.error(err);
-      setError("Error processing file");
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `Error: ${err.message}` },
+      ]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCSV = async (file: File) => {
-    try {
-      const dataset = await Csv.loadCsvFromBlob(file, file.name as any);
-      await processData((dataset as any).rows || (dataset as any));
-    } catch (e) {
-      setError("Error parsing CSV file");
-    }
-  };
+  const requestVisualizations = async () => {
+    if (!dataset) return;
 
-  const handleExcel = async (file: File) => {
-    try {
-      const dataset = await ExcelConnector.loadExcelFromBlob(file, { name: file.name } as any);
-      await processData((dataset as any).rows || (dataset as any));
-    } catch (e) {
-      setError("Error parsing Excel file");
-    }
-  };
-
-  // Replaced by modular inputs
-
-  /* -------------------- Visualization request & parsing ------------------- */
-
-  const requestVisualizationFromLLM = async () => {
-    setVizError(null);
     setVizLoading(true);
     try {
-      const aiConfig = {
-        apiKey: process.env.NEXT_PUBLIC_OPENROUTER_API_KEY,
-        model: "openai/gpt-oss-120b:free",
-      } as any;
-      const result = await runAutoIntel(
-        { rows: data, name: "uploaded" } as any,
-        "Suggest the best 4 charts for this dataset",
-        aiConfig
-      );
-      setVegaSpecs(Array.isArray(result.specs) ? result.specs : []);
-    } catch (e: any) {
-      setVizError(e?.message || "Failed to suggest charts.");
+      const response = await fetch("/api/llm/visualize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataset, config }),
+      });
+
+      if (!response.ok) throw new Error("Failed to generate visualizations");
+
+      const data = await response.json();
+      setVisualizations(data.visualizations || []);
+      setActiveTab("charts");
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setVizLoading(false);
     }
   };
 
-  /* --------------------------- Chart rendering ---------------------------- */
-
-  const ChartRenderer: React.FC<{ schema: VizSchema }> = ({ schema }) => {
-    const chartData = schema.data ?? [];
-    // safe sampling for performance
-    const dataForRender =
-      chartData.length > 1000
-        ? chartData.filter(
-            (_: any, i: number) => i % Math.ceil(chartData.length / 1000) === 0
-          )
-        : chartData;
-
-    if (schema.chartType === "bar") {
-      const xKey = schema.xKey!;
-      const series = schema.series ?? [];
-
-      return (
-        <div style={{ width: "100%", height: 420 }}>
-          <ResponsiveContainer>
-            <BarChart data={dataForRender}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xKey} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {series.map((s, i) => (
-                <Bar
-                  key={s.key}
-                  dataKey={s.key}
-                  name={s.name || s.key}
-                  fill={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    }
-
-    if (schema.chartType === "line") {
-      const xKey = schema.xKey!;
-      const series = schema.series ?? [];
-
-      return (
-        <div style={{ width: "100%", height: 420 }}>
-          <ResponsiveContainer>
-            <LineChart data={dataForRender}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={xKey} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {series.map((s, i) => (
-                <Line
-                  key={s.key}
-                  type="monotone"
-                  dataKey={s.key}
-                  name={s.name || s.key}
-                  stroke={s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length]}
-                  dot={false}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    }
-
-    if (schema.chartType === "pie") {
-      const categoryKey = schema.nameKey ?? schema.xKey;
-      const valueKey =
-        schema.series && schema.series[0] ? schema.series[0].key : undefined;
-      if (!valueKey || !categoryKey)
-        return <div>Pie schema missing category or value key.</div>;
-      // aggregate
-      const agg: Record<string, number> = {};
-      dataForRender.forEach((r: any) => {
-        const cat = String(r[categoryKey] ?? "Unknown");
-        const val = Number(r[valueKey]) || 0;
-        agg[cat] = (agg[cat] || 0) + val;
-      });
-      const pieData = Object.entries(agg).map(([name, value]) => ({
-        name,
-        value,
-      }));
-
-      return (
-        <div style={{ width: "100%", height: 420 }}>
-          <ResponsiveContainer>
-            <PieChart>
-              <Tooltip />
-              <Legend />
-              <Pie data={pieData} dataKey="value" nameKey="name" label>
-                {pieData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={
-                      (schema.series &&
-                        schema.series[0] &&
-                        schema.series[0].color) ||
-                      DEFAULT_COLORS[index % DEFAULT_COLORS.length]
-                    }
-                  />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    }
-
-    return <div>Unsupported chart type: {String(schema.chartType)}</div>;
+  const downloadReport = (html: string) => {
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `report-${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  /* ------------------------ Stats & correlation --------------------------- */
+  const renderDataSourceInput = () => {
+    const props = { onDataLoaded: handleDataLoaded, onError: handleError };
 
-  const getNumericColumns = () => {
-    if (data.length === 0) return [];
-    return columns.filter((col) =>
-      data.some(
-        (r) => r[col] !== null && r[col] !== undefined && !isNaN(Number(r[col]))
-      )
-    );
-  };
-
-  const calculateCorrelationBetween = (col1: string, col2: string) => {
-    const pairs = data
-      .map((r) => ({ x: Number(r[col1]), y: Number(r[col2]) }))
-      .filter((p) => !isNaN(p.x) && !isNaN(p.y));
-    if (pairs.length === 0) return 0;
-    const n = pairs.length;
-    const meanX = pairs.reduce((a, b) => a + b.x, 0) / n;
-    const meanY = pairs.reduce((a, b) => a + b.y, 0) / n;
-    const cov = pairs.reduce((a, b) => a + (b.x - meanX) * (b.y - meanY), 0);
-    const varX = pairs.reduce((a, b) => a + Math.pow(b.x - meanX, 2), 0);
-    const varY = pairs.reduce((a, b) => a + Math.pow(b.y - meanY, 2), 0);
-    if (varX === 0 || varY === 0) return 0;
-    return cov / Math.sqrt(varX * varY);
-  };
-
-  /* ------------------------- Chat with LLM (free text) -------------------- */
-
-  const sendUserMessageToLLM = async (userMessage: string) => {
-    if (!userMessage || userMessage.trim() === "") return;
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-    setInput("");
-    setLoadingAnalysis(true);
-
-    try {
-      if (sqlSources.has(source)) {
-        let reply = "";
-        if (source === ("postgres" as DataSourceType)) reply = await queryPostgres(userMessage);
-        else if (source === ("sqlite" as DataSourceType)) reply = await querySqlite(userMessage);
-        else if (source === ("mysql" as DataSourceType)) reply = await queryMysql(userMessage);
-        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      } else {
-        if (!data || data.length === 0) {
-          setMessages((prev) => [...prev, { role: "assistant", content: "Load a dataset first (CSV/Excel/Sheets) to ask questions about it." }]);
-        } else {
-          const aiKey = openRouterKey || process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-          const result = await runAutoIntel(
-            { rows: data, name: "uploaded" } as any,
-            userMessage,
-            { apiKey: aiKey, model: process.env.NEXT_PUBLIC_OPENROUTER_MODEL as any }
-          );
-          setVegaSpecs(Array.isArray(result.specs) ? result.specs : []);
-          const report = (result as any)?.report || "";
-          setMessages((prev) => [...prev, { role: "assistant", content: report || "" }]);
-        }
-      }
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Failed to fetch analysis from LLM." },
-      ]);
-    } finally {
-      setLoadingAnalysis(false);
+    switch (source) {
+      case "csv":
+        return <CsvHandler {...props} />;
+      case "excel":
+        return <ExcelHandler {...props} />;
+      case "sheets":
+        return <SheetsHandler {...props} />;
+      case "json":
+        return <JsonHandler {...props} />;
+      case "text":
+      case "pdf":
+        return <TextPdfHandler {...props} type={source} />;
+      case "postgres":
+      case "mysql":
+      case "sqlite":
+      case "mongodb":
+        return <DatabaseHandler {...props} dbType={source} />;
+      case "reddit":
+        return <RedditHandler {...props} />;
+      case "adsense":
+        return <AdSenseHandler {...props} />;
+      default:
+        return <Card className="p-6">Select a data source to begin</Card>;
     }
   };
 
-  const handleUserMessage = () => {
-    if (!input.trim()) return;
-    sendUserMessageToLLM(input.trim());
-  };
-
-  /* ------------------------------ Render UI ------------------------------- */
+  // Group sources by category
+  const groupedSources = DATA_SOURCES.reduce((acc, source) => {
+    if (!acc[source.category]) acc[source.category] = [];
+    acc[source.category].push(source);
+    return acc;
+  }, {} as Record<string, typeof DATA_SOURCES>);
 
   return (
-    <div className="container mx-auto px-4 py-10">
-      <h1 className="text-3xl font-bold mb-8">Upload Your Data</h1>
-
-      <div className="mb-6">
-        <SourcePicker value={source} onChange={setSource} />
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold mb-2">Data Analysis Platform</h1>
+        <p className="text-muted-foreground">
+          Connect your data, clean it, and get AI-powered insights
+        </p>
       </div>
-      <Card className="p-4 mb-6">
+
+      {/* API Key Section */}
+      <Card className="p-6 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">
+            OpenRouter API Configuration
+          </h2>
+        </div>
         <div className="grid md:grid-cols-3 gap-3 items-end">
           <div className="md:col-span-2">
-            <label className="text-sm text-muted-foreground">OpenRouter API Key</label>
             <Input
+              type="password"
               placeholder="sk-or-v1-..."
               value={openRouterKey}
               onChange={(e) => setOpenRouterKey(e.target.value)}
             />
           </div>
-          <div>
-            <Button onClick={() => {
-              try { localStorage.setItem("OPENROUTER_API_KEY", openRouterKey || ""); } catch {}
-            }} className="w-full">Save Key</Button>
-          </div>
+          <Button onClick={saveApiKey}>Save Key</Button>
         </div>
       </Card>
-      <div className="grid md:grid-cols-2 gap-8 mb-8">
-        {(source === "csv" || source === "excel") && (
-          <CsvExcelDrop onCsv={handleCSV} onExcel={handleExcel} />
-        )}
-        {source === "sheets" && (
-          <GoogleSheetsInput
-            onSubmit={async (url) => {
-              try {
-                const dataset = await SheetsConnector.loadGoogleSheetCsvByUrl(url);
-                await processData((dataset as any).rows || (dataset as any));
-              } catch (e) {
-                setError("Failed to load Google Sheet");
-              }
-            }}
-          />
-        )}
-        {source === "json" && (
-          <FileInputGeneric
-            accept="application/json"
-            onFile={async (f) => {
-              try {
-                const text = await f.text();
-                const parsed = JSON.parse(text);
-                const rows = Array.isArray(parsed) ? parsed : parsed.rows || [];
-                await processData(rows);
-              } catch {
-                setError("Invalid JSON file");
-              }
-            }}
-          />
-        )}
-        {source === "pdf" && (
-          <FileInputGeneric
-            accept="application/pdf"
-            onFile={async () => setError("PDF preview not yet implemented")}
-          />
-        )}
-        {source === "text" && (
-          <TextInputLoader
-            onSubmit={async (rows) => {
-              await processData(rows as any[]);
-            }}
-          />
-        )}
-        {source === ("mongodb" as DataSourceType) && (
-          <Card className="p-4">
-            MongoDB integration will use autointel-package docs.
-          </Card>
-        )}
-        {(source === ("postgres" as DataSourceType) || source === ("sqlite" as DataSourceType) || source === ("mysql" as DataSourceType)) && (
-          <Card className="p-4">
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">
-                Connected to {String(source).toUpperCase()} via your Profile settings. Ask a question below.
+
+      {/* Data Source Selection */}
+      <Card className="p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Choose Data Source</h2>
+        <div className="space-y-4">
+          {Object.entries(groupedSources).map(([category, sources]) => (
+            <div key={category}>
+              <p className="text-sm font-medium text-muted-foreground mb-2">
+                {category}
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                {sources.map((src) => {
+                  const Icon = src.icon;
+                  return (
+                    <Button
+                      key={src.value}
+                      variant={source === src.value ? "default" : "outline"}
+                      className="h-auto py-3 flex flex-col items-center gap-2"
+                      onClick={() => setSource(src.value)}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="text-xs">{src.label}</span>
+                    </Button>
+                  );
+                })}
               </div>
             </div>
-          </Card>
-        )}
-      </div>
+          ))}
+        </div>
+      </Card>
 
+      {/* Upload/Connect Section */}
+      {!dataset && <div className="mb-6">{renderDataSourceInput()}</div>}
+
+      {/* Error Display */}
       {error && (
-        <Alert variant="destructive" className="mb-8">
+        <Alert variant="destructive" className="mb-6">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {(data.length > 0 || sqlSources.has(source)) && (
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Left: table / charts / stats */}
-          {sqlSources.has(source as any) ? null : (
-          <Card className="p-6">
-            <Tabs
-              value={activeTab}
-              onValueChange={(v) => setActiveTab(String(v))}
-            >
-              <TabsList className="mb-4">
-                <TabsTrigger value="table">Table View</TabsTrigger>
-                <TabsTrigger value="chart">Chart View</TabsTrigger>
-                <TabsTrigger value="stats">Statistics</TabsTrigger>
-              </TabsList>
+      {/* Main Content */}
+      {dataset && (
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Left Column - Data View & Cleaning */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Data Cleaning */}
+            <DataCleaning
+              options={cleaningOptions}
+              onChange={setCleaningOptions}
+              onApply={applyCleaning}
+              disabled={loading}
+            />
 
-              <TabsContent value="table">
-                <PreviewTable rows={data} columns={columns} />
-              </TabsContent>
-
-              <TabsContent value="chart">
-                <div className="mb-4">
-                  <Button
-                    onClick={requestVisualizationFromLLM}
-                    disabled={vizLoading}
-                  >
-                    {vizLoading ? "Generating..." : "Suggest Visualizations"}
-                  </Button>
+            {/* Data Display */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Dataset View</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {dataset.schema.rowCount} rows ×{" "}
+                    {dataset.schema.fields.length} columns
+                  </p>
                 </div>
-                {vizError && (
-                  <div className="text-destructive mb-4">{vizError}</div>
-                )}
-                <ChartSuggestions specs={vegaSpecs as any[]} />
-              </TabsContent>
-
-              <TabsContent value="stats">
-                <div className="grid md:grid-cols-2 gap-4">
-                  {getNumericColumns().map((col) => {
-                    const values = data
-                      .map((r) => Number(r[col]))
-                      .filter((v) => !isNaN(v));
-                    const sum = values.reduce((a, b) => a + b, 0);
-                    const avg = values.length ? sum / values.length : 0;
-                    const max = values.length ? Math.max(...values) : 0;
-                    const min = values.length ? Math.min(...values) : 0;
-                    return (
-                      <Card key={col} className="p-4">
-                        <h3 className="font-semibold mb-2">{col}</h3>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">
-                              Average:{" "}
-                            </span>
-                            {avg.toFixed(2)}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Sum: </span>
-                            {sum.toFixed(2)}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Max: </span>
-                            {max.toFixed(2)}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Min: </span>
-                            {min.toFixed(2)}
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
-
-                  <Card className="p-4">
-                    <h3 className="font-semibold mb-2">
-                      Correlations (numeric columns)
-                    </h3>
-                    <div className="text-sm whitespace-pre-wrap">
-                      {(() => {
-                        const numericCols = getNumericColumns();
-                        if (numericCols.length < 2)
-                          return "Not enough numeric columns to compute correlations.";
-                        let s = "";
-                        for (let i = 0; i < numericCols.length - 1; i++) {
-                          for (let j = i + 1; j < numericCols.length; j++) {
-                            const corr = calculateCorrelationBetween(
-                              numericCols[i],
-                              numericCols[j]
-                            );
-                            s += `- ${numericCols[i]} vs ${
-                              numericCols[j]
-                            }: ${corr.toFixed(2)}\n`;
-                          }
-                        }
-                        return s;
-                      })()}
-                    </div>
-                  </Card>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </Card>
-          )}
-
-          {/* Right: Data assistant / chat */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Data Assistant</h2>
-            {sqlSources.has(source as any) && (
-              <div className="mb-3 text-sm text-muted-foreground">Chatting with your {source.toUpperCase()} database.</div>
-            )}
-            <div className="flex flex-col h-[600px]">
-              <ScrollArea className="flex-1 mb-4 p-4 border rounded-lg">
-                {loadingAnalysis && (
-                  <div className="mb-4 bg-muted/30 rounded-lg p-3">
-                    Generating analysis...
-                  </div>
-                )}
-                {messages.map((message, idx) => (
-                  <div
-                    key={idx}
-                    className={`mb-4 ${
-                      message.role === "assistant"
-                        ? "bg-muted/50 rounded-lg p-3"
-                        : "bg-primary/5 rounded-lg p-3"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </ScrollArea>
-              <div className="flex gap-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleUserMessage()}
-                  placeholder="Ask about your data..."
-                  className="flex-1"
-                />
-                <Button onClick={handleUserMessage}>
-                  <Send className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={resetData}>
+                  Reset Data
                 </Button>
               </div>
-            </div>
-          </Card>
+
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="w-full mb-4">
+                  <TabsTrigger value="table" className="flex-1">
+                    <Table2 className="h-4 w-4 mr-2" />
+                    Table
+                  </TabsTrigger>
+                  <TabsTrigger value="charts" className="flex-1">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Charts
+                  </TabsTrigger>
+                  <TabsTrigger value="stats" className="flex-1">
+                    <FileText className="h-4 w-4 mr-2" />
+                    Stats
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="table">
+                  <PreviewTable
+                    rows={dataset.rows}
+                    columns={dataset.schema.fields.map((f: any) => f.name)}
+                  />
+                </TabsContent>
+
+                <TabsContent value="charts">
+                  <div className="mb-4 flex gap-2 items-center">
+                    <Button
+                      onClick={requestVisualizations}
+                      disabled={vizLoading}
+                    >
+                      {vizLoading ? "Generating..." : "Generate Visualizations"}
+                    </Button>
+                    <div className="text-sm text-muted-foreground">
+                      {visualizations.length > 0
+                        ? `${visualizations.length} suggestion(s)`
+                        : ""}
+                    </div>
+                  </div>
+
+                  {visualizations.length > 0 ? (
+                    <div className="space-y-6 max-h-[50vh] overflow-auto">
+                      {visualizations.map((viz) => (
+                        <Card key={viz.id} className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <h3 className="font-semibold mb-1">
+                                {viz.title}
+                              </h3>
+                              {viz.description && (
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  {viz.description}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Vega-Lite spec
+                            </div>
+                          </div>
+
+                          <div className="mt-3">
+                            {/* Render the actual Vega-Lite visualization */}
+                            <VegaLiteRenderer spec={viz.vegaLiteSpec} />
+                          </div>
+
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // open raw spec in new window (stringified)
+                                const s = JSON.stringify(
+                                  viz.vegaLiteSpec || {},
+                                  null,
+                                  2
+                                );
+                                const blob = new Blob([s], {
+                                  type: "application/json",
+                                });
+                                const url = URL.createObjectURL(blob);
+                                window.open(url, "_blank");
+                                setTimeout(
+                                  () => URL.revokeObjectURL(url),
+                                  60000
+                                );
+                              }}
+                            >
+                              View Raw Spec
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // copy spec to clipboard
+                                navigator.clipboard
+                                  .writeText(
+                                    JSON.stringify(
+                                      viz.vegaLiteSpec || {},
+                                      null,
+                                      2
+                                    )
+                                  )
+                                  .then(() => alert("Spec copied to clipboard"))
+                                  .catch(() => alert("Failed to copy"));
+                              }}
+                            >
+                              Copy Spec
+                            </Button>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      No visualizations yet. Click the button above to generate.
+                    </p>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="stats">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <Card className="p-4">
+                        <p className="text-sm text-muted-foreground">
+                          Total Rows
+                        </p>
+                        <p className="text-2xl font-bold">
+                          {dataset.schema.rowCount}
+                        </p>
+                      </Card>
+                      <Card className="p-4">
+                        <p className="text-sm text-muted-foreground">Columns</p>
+                        <p className="text-2xl font-bold">
+                          {dataset.schema.fields.length}
+                        </p>
+                      </Card>
+                    </div>
+                    <Card className="p-4">
+                      <h3 className="font-semibold mb-3">Schema</h3>
+                      <div className="space-y-2">
+                        {dataset.schema.fields.map((field: any) => (
+                          <div
+                            key={field.name}
+                            className="flex justify-between text-sm"
+                          >
+                            <span className="font-medium">{field.name}</span>
+                            <Badge variant="secondary">{field.type}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </Card>
+          </div>
+
+          {/* Right Column - Chat Assistant */}
+          <div className="lg:col-span-1">
+            <Card className="p-6 sticky top-4">
+              <h2 className="text-xl font-semibold mb-4">AI Assistant</h2>
+              <div className="flex flex-col h-[700px]">
+                <ScrollArea className="flex-1 mb-4 p-4 border rounded-lg">
+                  {messages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`mb-3 ${
+                        msg.role === "assistant"
+                          ? "bg-muted/50 rounded-lg p-3"
+                          : "bg-primary/10 rounded-lg p-3"
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                      {msg.html && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2"
+                          onClick={() => downloadReport(msg.html!)}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download Report
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  {loading && (
+                    <div className="mb-3 bg-muted/30 rounded-lg p-3 text-sm">
+                      Analyzing your data...
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </ScrollArea>
+                <div className="flex gap-2">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                    placeholder="Ask about your data..."
+                    disabled={loading}
+                  />
+                  <Button onClick={sendMessage} disabled={loading} size="icon">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
         </div>
       )}
     </div>

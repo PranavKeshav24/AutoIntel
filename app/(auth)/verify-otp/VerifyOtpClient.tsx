@@ -5,20 +5,26 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { resendOtp, verifyOtp } from "@/lib/api";
-import { useSearchParams } from "next/navigation";
 
-export default function VerifyOtpPage() {
+type Props = { initialSessionId?: string };
+
+export default function VerifyOtpClient({ initialSessionId = "" }: Props) {
   const [otp, setOtp] = React.useState("");
-  const [sessionId, setSessionId] = React.useState("");
+  const [sessionId, setSessionId] = React.useState(initialSessionId);
   const [error, setError] = React.useState("");
   const [ok, setOk] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const params = useSearchParams();
 
   React.useEffect(() => {
-    const sid = params?.get("session_id") || "";
-    if (sid) setSessionId(sid);
-  }, [params]);
+    // If you want to pick up session_id from URL when client navigates to page
+    if (!sessionId) {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const sid = params.get("session_id");
+        if (sid) setSessionId(sid);
+      } catch {}
+    }
+  }, [sessionId]);
 
   const onVerify = async () => {
     setLoading(true);

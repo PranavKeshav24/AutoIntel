@@ -51,7 +51,7 @@ const teamMembers = [
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen py-28 px-4">
+    <div className="min-h-screen py-28 px-12">
       {/* Company Introduction */}
       <section className="container mx-auto px-4 mb-20">
         <h1 className="text-4xl font-bold text-center mb-6">
