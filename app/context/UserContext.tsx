@@ -7,17 +7,7 @@ import {
   useState,
   useCallback,
 } from "react";
-
-type VirtualTryOnItem = {
-  id: string;
-  user_id: string;
-  human_image_url: string;
-  garment_image_url: string;
-  cloth_type: string;
-  result_image_url: string;
-  created_at: string;
-  updated_at: string;
-};
+import { useAuth } from "./AuthContext";
 
 type UserContextType = {
   user: {
@@ -28,7 +18,6 @@ type UserContextType = {
     is_email_verified: boolean;
     is_phone_verified: boolean;
     is_google_verified: boolean;
-    VirtualTryOn: VirtualTryOnItem[];
   } | null;
   setUser: (user: UserContextType["user"]) => void;
   fetchUserData: () => Promise<void>;
@@ -38,10 +27,10 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<UserContextType["user"]>(null);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const { isLoggedIn } = useAuth();
 
   const fetchUserData = useCallback(async () => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("access_token");
     if (!token) {
       setUser(null);
       return;
@@ -63,7 +52,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(data.data);
       } else {
         console.error(
-          "Failed to delete account:",
+          "Failed to fetch user data:",
           JSON.stringify(data.detail || "No details provided")
         );
         setUser(null);
@@ -75,19 +64,12 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token !== authToken) {
-      setAuthToken(token);
-    }
-  }, [authToken]);
-
-  useEffect(() => {
-    if (authToken) {
+    if (isLoggedIn) {
       fetchUserData();
     } else {
       setUser(null);
     }
-  }, [authToken, fetchUserData]);
+  }, [isLoggedIn, fetchUserData]);
 
   return (
     <UserContext.Provider value={{ user, setUser, fetchUserData }}>
