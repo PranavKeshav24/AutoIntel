@@ -9,9 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@autointel/csv": "^1.0.1",
-    "@autointel/excel": "^1.0.1",
-    "@autointel/sheets": "^1.0.1",
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^3.9.0",
@@ -46,7 +43,6 @@
     "@types/node": "20.6.2",
     "@types/react": "18.2.22",
     "@types/react-dom": "18.2.7",
-    "autointel-package": "^1.0.1",
     "autoprefixer": "10.4.15",
     "canvas": "^3.2.0",
     "class-variance-authority": "^0.7.0",
