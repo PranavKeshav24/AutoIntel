@@ -4,12 +4,12 @@ import { DataProcessor } from "@/lib/dataProcessor";
 
 export async function POST(
   request: Request,
-  { params }: { params: { dbType: string } }
+  { params }: { params: Promise<{ dbType: string }> }
 ): Promise<NextResponse> {
   try {
     const body = await request.json();
     const { connectionString } = body || {};
-    const { dbType } = params;
+    const { dbType } = await params;
 
     if (!connectionString) {
       return NextResponse.json(
@@ -79,7 +79,8 @@ export async function POST(
     // const dataset = DataProcessor.createDataSet(rows, dbType as any, sourceName);
     // return NextResponse.json({ dataset });
   } catch (error: any) {
-    console.error(`Error in ${params.dbType} connect API:`, error);
+    const { dbType } = await params;
+    console.error(`Error in ${dbType} connect API:`, error);
     return NextResponse.json(
       { error: error?.message || "Database connection failed" },
       { status: 500 }
