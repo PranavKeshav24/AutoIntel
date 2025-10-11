@@ -329,7 +329,7 @@ export default function UploadPage() {
   }, {} as Record<string, typeof DATA_SOURCES>);
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-16 py-24">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Data Analysis Platform</h1>
         <p className="text-muted-foreground">
