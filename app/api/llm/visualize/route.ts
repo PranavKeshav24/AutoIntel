@@ -18,39 +18,50 @@ export async function POST(request: NextRequest) {
 
     const sampleData = dataset.schema.sampleRows || dataset.rows.slice(0, 10);
 
-    const systemPrompt = `You are a data visualization expert. Analyze this dataset and suggest 4 relevant visualizations.
+    const systemPrompt = `You are a data visualization expert. Analyze this dataset and suggest 4 diverse visualizations using Plotly.
 
 Dataset Schema:
 ${schemaSummary}
 
 Total rows: ${dataset.schema.rowCount}
 
-Sample data:
+Sample data (first 10 rows):
 ${JSON.stringify(sampleData, null, 2)}
 
-Create 4 diverse visualizations (bar, line, pie, scatter, etc.) that best represent the data patterns.
+Create 4 diverse visualizations (bar, line, scatter, pie, box, histogram, etc.) that best represent the data patterns.
 
-Respond with a JSON array of visualization specs:
-[
-  {
-    "id": "viz-1",
-    "title": "Chart Title",
-    "description": "What this chart shows",
-    "vegaLiteSpec": {
-      "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-      "data": { "values": [] },
-      "mark": "bar",
-      "encoding": {
-        "x": {"field": "fieldName", "type": "nominal"},
-        "y": {"field": "fieldName", "type": "quantitative"}
-      },
-      "width": 400,
-      "height": 300
+Respond with a JSON array of visualization specs. Each spec should have:
+{
+  "id": "unique-id",
+  "title": "Chart Title",
+  "description": "What this chart shows",
+  "plotlyData": [
+    {
+      "x": [...],
+      "y": [...],
+      "type": "bar|scatter|line|pie|box|histogram|heatmap",
+      "mode": "lines|markers|lines+markers",
+      "name": "Series Name",
+      "marker": { "color": "blue" }
     }
+  ],
+  "plotlyLayout": {
+    "xaxis": { "title": "X Axis Label" },
+    "yaxis": { "title": "Y Axis Label" },
+    "title": "Chart Title"
   }
-]
+}
 
-IMPORTANT: Include actual data samples in the "values" array, not empty arrays.`;
+IMPORTANT: 
+- Include actual data values in the plotlyData arrays, not empty arrays
+- Use the actual column names from the schema
+- Choose appropriate chart types for the data
+- For categorical data, use bar or pie charts
+- For time series, use line charts
+- For distributions, use histograms or box plots
+- Keep the data arrays reasonable (sample if needed)
+
+Return ONLY a JSON array, no markdown formatting.`;
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -71,8 +82,9 @@ IMPORTANT: Include actual data samples in the "values" array, not empty arrays.`
           "X-Title": config.title || "Data Analysis App",
         },
         body: JSON.stringify({
-          model: config.model || "openai/gpt-oss-20b:free",
+          model: config.model || "openai/gpt-4o-mini",
           messages,
+          temperature: 0.7,
         }),
       }
     );
@@ -86,19 +98,35 @@ IMPORTANT: Include actual data samples in the "values" array, not empty arrays.`
     const content = data.choices[0]?.message?.content || "";
 
     // Extract JSON array
-    const jsonMatch =
-      content.match(/```json\s*([\s\S]*?)```/) ||
-      content.match(/```\s*([\s\S]*?)```/) ||
-      content.match(/\[[\s\S]*\]/);
-
     let visualizations: VisualizationSpec[] = [];
     try {
-      visualizations = JSON.parse(
-        jsonMatch ? jsonMatch[1] || jsonMatch[0] : content
-      );
+      // Try to parse as JSON directly
+      const jsonMatch =
+        content.match(/```json\s*([\s\S]*?)```/) ||
+        content.match(/```\s*([\s\S]*?)```/) ||
+        content.match(/\[[\s\S]*\]/);
+
+      const jsonStr = jsonMatch ? jsonMatch[1] || jsonMatch[0] : content;
+      visualizations = JSON.parse(jsonStr);
+
+      // Validate and ensure proper structure
+      visualizations = visualizations.map((viz: any, idx: number) => ({
+        id: viz.id || `viz-${idx + 1}`,
+        title: viz.title || `Visualization ${idx + 1}`,
+        description: viz.description || "",
+        plotlyData: viz.plotlyData || [],
+        plotlyLayout: viz.plotlyLayout || {},
+        plotlyConfig: viz.plotlyConfig || {},
+      }));
+
+      // If no visualizations were generated, create defaults
+      if (visualizations.length === 0) {
+        visualizations = createDefaultVisualizations(dataset);
+      }
     } catch (e) {
       console.error("Failed to parse visualizations:", e);
-      visualizations = [];
+      // Fall back to default visualizations
+      visualizations = createDefaultVisualizations(dataset);
     }
 
     return NextResponse.json({ visualizations });
@@ -109,4 +137,143 @@ IMPORTANT: Include actual data samples in the "values" array, not empty arrays.`
       { status: 500 }
     );
   }
+}
+
+// Helper function to create default visualizations
+function createDefaultVisualizations(dataset: DataSet): VisualizationSpec[] {
+  const visualizations: VisualizationSpec[] = [];
+  const fields = dataset.schema.fields;
+  const rows = dataset.rows.slice(0, 50); // Use first 50 rows
+
+  // Find numeric and categorical columns
+  const numericCols = fields.filter((f: any) => f.type === "number");
+  const categoricalCols = fields.filter((f: any) => f.type === "string");
+  const dateCols = fields.filter((f: any) => f.type === "date");
+
+  // 1. Bar chart - first categorical vs first numeric
+  if (categoricalCols.length > 0 && numericCols.length > 0) {
+    const catCol = categoricalCols[0].name;
+    const numCol = numericCols[0].name;
+
+    const grouped: Record<string, number> = {};
+    rows.forEach((row: any) => {
+      const cat = String(row[catCol] || "Unknown");
+      const val = Number(row[numCol]) || 0;
+      grouped[cat] = (grouped[cat] || 0) + val;
+    });
+
+    visualizations.push({
+      id: "viz-1",
+      title: `${numCol} by ${catCol}`,
+      description: `Bar chart showing ${numCol} aggregated by ${catCol}`,
+      plotlyData: [
+        {
+          x: Object.keys(grouped),
+          y: Object.values(grouped),
+          type: "bar",
+          marker: { color: "#3b82f6" },
+        },
+      ],
+      plotlyLayout: {
+        xaxis: { title: catCol },
+        yaxis: { title: numCol },
+      },
+    });
+  }
+
+  // 2. Line chart - time series or first two numerics
+  if (dateCols.length > 0 && numericCols.length > 0) {
+    const dateCol = dateCols[0].name;
+    const numCol = numericCols[0].name;
+
+    visualizations.push({
+      id: "viz-2",
+      title: `${numCol} over Time`,
+      description: `Time series of ${numCol}`,
+      plotlyData: [
+        {
+          x: rows.map((r: any) => r[dateCol]),
+          y: rows.map((r: any) => Number(r[numCol]) || 0),
+          type: "scatter",
+          mode: "lines+markers",
+          marker: { color: "#10b981" },
+        },
+      ],
+      plotlyLayout: {
+        xaxis: { title: dateCol },
+        yaxis: { title: numCol },
+      },
+    });
+  } else if (numericCols.length >= 2) {
+    const col1 = numericCols[0].name;
+    const col2 = numericCols[1].name;
+
+    visualizations.push({
+      id: "viz-2",
+      title: `${col1} vs ${col2}`,
+      description: `Scatter plot of ${col1} vs ${col2}`,
+      plotlyData: [
+        {
+          x: rows.map((r: any) => Number(r[col1]) || 0),
+          y: rows.map((r: any) => Number(r[col2]) || 0),
+          type: "scatter",
+          mode: "markers",
+          marker: { color: "#10b981", size: 8 },
+        },
+      ],
+      plotlyLayout: {
+        xaxis: { title: col1 },
+        yaxis: { title: col2 },
+      },
+    });
+  }
+
+  // 3. Histogram - first numeric column
+  if (numericCols.length > 0) {
+    const numCol = numericCols[0].name;
+
+    visualizations.push({
+      id: "viz-3",
+      title: `Distribution of ${numCol}`,
+      description: `Histogram showing the distribution of ${numCol}`,
+      plotlyData: [
+        {
+          x: rows.map((r: any) => Number(r[numCol]) || 0),
+          type: "histogram",
+          marker: { color: "#f59e0b" },
+        },
+      ],
+      plotlyLayout: {
+        xaxis: { title: numCol },
+        yaxis: { title: "Frequency" },
+      },
+    });
+  }
+
+  // 4. Pie chart - first categorical column count
+  if (categoricalCols.length > 0) {
+    const catCol = categoricalCols[0].name;
+
+    const counts: Record<string, number> = {};
+    rows.forEach((row: any) => {
+      const cat = String(row[catCol] || "Unknown");
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+
+    visualizations.push({
+      id: "viz-4",
+      title: `Distribution of ${catCol}`,
+      description: `Pie chart showing the distribution of ${catCol}`,
+      plotlyData: [
+        {
+          labels: Object.keys(counts),
+          values: Object.values(counts),
+          type: "pie",
+        },
+      ],
+      plotlyLayout: {},
+    });
+  }
+
+  return visualizations;
 }

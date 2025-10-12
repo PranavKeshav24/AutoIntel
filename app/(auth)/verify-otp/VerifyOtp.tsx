@@ -11,6 +11,8 @@ import React, {
 } from "react";
 import SuccessModal from "@/app/components/SuccessModal";
 import ErrorModal from "@/app/components/ErrorModal";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default function VerifyOtp(): JSX.Element {
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
@@ -161,19 +163,17 @@ export default function VerifyOtp(): JSX.Element {
   };
 
   return (
-    <>
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h2 className="text-center text-2xl/9 font-bold tracking-tight text-gray-900">
-          Verify OTP
-        </h2>
-        <p className="mt-2 text-center text-sm/6 text-gray-500">
-          Enter the 6-digit code sent to your email.
-        </p>
-      </div>
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-md p-8">
+        <div className="mb-8 text-center">
+          <h2 className="text-3xl font-bold tracking-tight">Verify OTP</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Enter the 6-digit code sent to your email
+          </p>
+        </div>
 
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-sm">
         <form className="space-y-8" onSubmit={handleVerify}>
-          <div className="flex justify-center space-x-2">
+          <div className="flex justify-center gap-2">
             {otp.map((value, index) => (
               <input
                 key={`otp-input-${index}`}
@@ -187,39 +187,33 @@ export default function VerifyOtp(): JSX.Element {
                 ref={(el) => {
                   inputRefs.current[index] = el;
                 }}
-                className="w-12 h-12 text-center text-2xl font-bold text-gray-900 rounded-md border border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 outline-none transition-all duration-200 ease-in-out focus:ring-2 focus:ring-offset-2"
+                className="w-12 h-14 text-center text-2xl font-bold rounded-md border border-input bg-background focus:border-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 outline-none transition-all"
                 autoComplete="off"
               />
             ))}
           </div>
 
-          <div>
-            <button
-              type="submit"
-              className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer"
-            >
-              Verify
-            </button>
-          </div>
+          <Button type="submit" className="w-full">
+            Verify OTP
+          </Button>
 
-          <p className="text-center text-sm/6 text-gray-500">
+          <p className="text-center text-sm text-muted-foreground">
             Didn&apos;t receive the code?{" "}
             <a
               href="#"
               onClick={handleResendOtp}
-              className={`font-semibold ${
+              className={`font-medium ${
                 resendTimer > 0
-                  ? "text-gray-400 cursor-not-allowed"
-                  : "text-indigo-600 hover:text-indigo-500"
+                  ? "text-muted-foreground cursor-not-allowed"
+                  : "text-primary hover:underline"
               }`}
             >
-              {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : "Resend OTP"}
+              {resendTimer > 0 ? `Resend in ${resendTimer}s` : "Resend OTP"}
             </a>
           </p>
         </form>
-      </div>
+      </Card>
 
-      {/* Modals */}
       <ErrorModal
         show={showErrorModal}
         onClose={() => setShowErrorModal(false)}
@@ -231,6 +225,6 @@ export default function VerifyOtp(): JSX.Element {
         onClose={() => setShowSuccessModal(false)}
         message={successMessage}
       />
-    </>
+    </div>
   );
 }

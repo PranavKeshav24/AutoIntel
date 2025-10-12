@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, Fragment } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import ForgotPassword from "../../components/ForgotPassword";
@@ -11,6 +11,10 @@ import Image from "next/image";
 import ErrorModal from "@/app/components/ErrorModal";
 import SuccessModal from "@/app/components/SuccessModal";
 import RestoreAccountModal from "@/app/components/RestoreAccountModal";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function Login() {
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
@@ -134,58 +138,45 @@ export default function Login() {
   };
 
   return (
-    <>
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h2 className="mt-10 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
-          Sign in to your account
-        </h2>
-      </div>
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-md p-8">
+        <div className="mb-8 text-center">
+          <h2 className="text-3xl font-bold tracking-tight">
+            Sign in to your account
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Welcome back! Please enter your details
+          </p>
+        </div>
 
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              Email address
-            </label>
-            <div className="mt-2">
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                placeholder="johndoe@gmail.com"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="block w-full rounded-md border border-input px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email address</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              placeholder="johndoe@gmail.com"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
 
-          <div>
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label
-                htmlFor="password"
-                className="block text-sm/6 font-medium text-gray-900"
+              <Label htmlFor="password">Password</Label>
+              <a
+                href="#"
+                onClick={openForgotPasswordModal}
+                className="text-sm font-medium text-primary hover:underline"
               >
-                Password
-              </label>
-              <div className="text-sm">
-                <a
-                  href="#"
-                  onClick={openForgotPasswordModal}
-                  className="font-semibold text-indigo-600 hover:text-indigo-500"
-                >
-                  Forgot password?
-                </a>
-              </div>
+                Forgot password?
+              </a>
             </div>
-
-            <div className="mt-2 relative">
-              <input
+            <div className="relative">
+              <Input
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
@@ -193,12 +184,12 @@ export default function Login() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full rounded-md border border-input px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                className="pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-600 bg-transparent border-none p-0"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? (
@@ -210,52 +201,48 @@ export default function Login() {
             </div>
           </div>
 
-          <div>
-            <button
-              type="submit"
-              className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer"
-            >
-              Sign in
-            </button>
-          </div>
+          <Button type="submit" className="w-full">
+            Sign in
+          </Button>
         </form>
 
         <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300" />
+            <div className="w-full border-t" />
           </div>
-          <div className="relative flex justify-center text-sm/6">
-            <span className="bg-white px-2 text-gray-500">
+          <div className="relative flex justify-center text-sm">
+            <span className="bg-background px-2 text-muted-foreground">
               or continue with
             </span>
           </div>
         </div>
 
-        <div>
-          <button
-            onClick={handleGoogleLogin}
-            className="flex w-full items-center justify-center gap-3 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm/6 font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition cursor-pointer"
-          >
-            <Image
-              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-              alt="Google"
-              width={20}
-              height={20}
-            />
-            Sign in with Google
-          </button>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleGoogleLogin}
+          className="w-full"
+        >
+          <Image
+            src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+            alt="Google"
+            width={20}
+            height={20}
+            className="mr-2"
+          />
+          Sign in with Google
+        </Button>
 
-        <p className="mt-10 text-center text-sm/6 text-gray-500">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
           <Link
             href="/register"
-            className="font-semibold text-indigo-600 hover:text-indigo-500"
+            className="font-medium text-primary hover:underline"
           >
             Sign up
           </Link>
         </p>
-      </div>
+      </Card>
 
       <ForgotPassword
         isOpen={isForgotPasswordOpen}
@@ -279,6 +266,6 @@ export default function Login() {
         onClose={handleSuccessClose}
         message={successMessage}
       />
-    </>
+    </div>
   );
 }

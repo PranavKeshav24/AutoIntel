@@ -13,6 +13,9 @@ import { useAuth } from "@/app/context/AuthContext";
 import { useUser } from "@/app/context/UserContext";
 import ErrorModal from "@/app/components/ErrorModal";
 import SuccessModal from "@/app/components/SuccessModal";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 export default function GoogleRedirectPage() {
   const router = useRouter();
@@ -98,24 +101,29 @@ export default function GoogleRedirectPage() {
 
   return (
     <>
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 text-lg font-semibold text-gray-700">
-            {restorePending
-              ? "Restoring your account..."
-              : "Completing your login..."}
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <Card className="w-full max-w-md p-8">
+          <div className="text-center space-y-4">
+            <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+            <div>
+              <h2 className="text-xl font-semibold">
+                {restorePending
+                  ? "Restoring your account..."
+                  : "Completing your login..."}
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Please wait while we redirect you
+              </p>
+            </div>
           </div>
-          <div className="text-gray-500">
-            Please wait while we redirect you.
-          </div>
-        </div>
+        </Card>
       </div>
 
       {/* Restore Modal */}
       <Transition appear show={isRestoreModalOpen} as={Fragment}>
         <Dialog
           as="div"
-          className="relative z-10"
+          className="relative z-50"
           onClose={() => setIsRestoreModalOpen(false)}
         >
           <TransitionChild
@@ -131,7 +139,7 @@ export default function GoogleRedirectPage() {
           </TransitionChild>
 
           <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4 text-center">
+            <div className="flex min-h-full items-center justify-center p-4">
               <TransitionChild
                 as={Fragment}
                 enter="ease-out duration-300"
@@ -141,36 +149,33 @@ export default function GoogleRedirectPage() {
                 leaveFrom="opacity-100 scale-100"
                 leaveTo="opacity-0 scale-95"
               >
-                <DialogPanel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                <DialogPanel className="w-full max-w-md transform overflow-hidden rounded-lg bg-background p-6 shadow-xl transition-all border">
                   <DialogTitle
                     as="h3"
-                    className="text-lg font-medium leading-6 text-gray-900"
+                    className="text-lg font-semibold leading-6"
                   >
                     Restore Deleted Account
                   </DialogTitle>
-                  <div className="mt-2">
-                    <p className="text-sm text-gray-500">
+                  <div className="mt-3">
+                    <p className="text-sm text-muted-foreground">
                       This account is scheduled for deletion. Do you want to
                       restore it?
                     </p>
                   </div>
 
-                  <div className="mt-4 flex justify-end gap-3">
-                    <button
-                      type="button"
-                      className="inline-flex justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 cursor-pointer"
+                  <div className="mt-6 flex justify-end gap-3">
+                    <Button
+                      variant="outline"
                       onClick={() => setIsRestoreModalOpen(false)}
                     >
                       Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 cursor-pointer"
+                    </Button>
+                    <Button
                       onClick={handleRestoreAccount}
                       disabled={restorePending}
                     >
                       {restorePending ? "Restoring..." : "Restore"}
-                    </button>
+                    </Button>
                   </div>
                 </DialogPanel>
               </TransitionChild>

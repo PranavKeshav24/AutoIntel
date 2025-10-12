@@ -50,7 +50,9 @@ export interface VisualizationSpec {
   id: string;
   title: string;
   description?: string;
-  vegaLiteSpec: Record<string, unknown>;
+  plotlyData: any[];
+  plotlyLayout?: Record<string, unknown>;
+  plotlyConfig?: Record<string, unknown>;
 }
 
 export interface AnalysisResult {

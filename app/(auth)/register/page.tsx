@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import ErrorModal from "@/app/components/ErrorModal";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -59,69 +63,48 @@ export default function Register() {
   };
 
   return (
-    <>
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h2 className="mt-10 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
-          Sign up for an account
-        </h2>
-      </div>
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-md p-8">
+        <div className="mb-8 text-center">
+          <h2 className="text-3xl font-bold tracking-tight">
+            Create an account
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Sign up to get started with your account
+          </p>
+        </div>
 
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Name */}
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              Name
-            </label>
-            <div className="mt-2">
-              <input
-                id="name"
-                name="name"
-                type="text"
-                required
-                placeholder="John Doe"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="block w-full rounded-md border border-input px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="name">Full Name</Label>
+            <Input
+              id="name"
+              name="name"
+              type="text"
+              required
+              placeholder="John Doe"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
 
-          {/* Email */}
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              Email address
-            </label>
-            <div className="mt-2">
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                placeholder="johndoe@gmail.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="block w-full rounded-md border border-input px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email address</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              placeholder="johndoe@gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
 
-          {/* Password */}
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              Password
-            </label>
-            <div className="mt-2 relative">
-              <input
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <div className="relative">
+              <Input
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
@@ -129,12 +112,12 @@ export default function Register() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
-                className="block w-full rounded-md border border-input px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                className="pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-600 bg-transparent border-none p-0"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? (
@@ -146,16 +129,10 @@ export default function Register() {
             </div>
           </div>
 
-          {/* Repeat Password */}
-          <div>
-            <label
-              htmlFor="repeatPassword"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              Repeat Password
-            </label>
-            <div className="mt-2 relative">
-              <input
+          <div className="space-y-2">
+            <Label htmlFor="repeatPassword">Confirm Password</Label>
+            <div className="relative">
+              <Input
                 id="repeatPassword"
                 name="repeatPassword"
                 type={showRepeatPassword ? "text" : "password"}
@@ -163,16 +140,16 @@ export default function Register() {
                 value={repeatPassword}
                 onChange={(e) => setRepeatPassword(e.target.value)}
                 autoComplete="new-password"
-                className="block w-full rounded-md border border-input px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                className="pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowRepeatPassword(!showRepeatPassword)}
-                className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-600 bg-transparent border-none p-0"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={
                   showRepeatPassword
-                    ? "Hide repeat password"
-                    : "Show repeat password"
+                    ? "Hide confirm password"
+                    : "Show confirm password"
                 }
               >
                 {showRepeatPassword ? (
@@ -184,35 +161,27 @@ export default function Register() {
             </div>
           </div>
 
-          {/* Submit Button */}
-          <div>
-            <button
-              type="submit"
-              className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer"
-            >
-              Sign up
-            </button>
-          </div>
+          <Button type="submit" className="w-full">
+            Sign up
+          </Button>
         </form>
 
-        {/* Sign In Link */}
-        <p className="mt-10 text-center text-sm/6 text-gray-500">
-          Have an account?{" "}
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
           <Link
             href="/login"
-            className="font-semibold text-indigo-600 hover:text-indigo-500"
+            className="font-medium text-primary hover:underline"
           >
             Sign in
           </Link>
         </p>
-      </div>
+      </Card>
 
-      {/* Error Modal */}
       <ErrorModal
         show={showErrorModal}
         onClose={() => setShowErrorModal(false)}
         message={error}
       />
-    </>
+    </div>
   );
 }

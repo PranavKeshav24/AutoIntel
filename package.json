@@ -60,6 +60,7 @@
     "next-themes": "^0.3.0",
     "nvm": "^0.0.4",
     "papaparse": "^5.5.3",
+    "plotly.js-dist-min": "^3.1.1",
     "postcss": "^8.5.6",
     "react": "18.2.0",
     "react-day-picker": "^8.10.1",
@@ -83,6 +84,8 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/papaparse": "^5.3.15"
+    "@types/papaparse": "^5.3.15",
+    "@types/plotly.js": "^3.0.6",
+    "@types/plotly.js-dist-min": "^2.3.4"
   }
 }

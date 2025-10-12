@@ -43,7 +43,7 @@ import {
   MessageSquare,
   DollarSign,
 } from "lucide-react";
-import VegaLiteRenderer from "@/components/VegaLiteRenderer";
+import PlotlyRenderer from "@/components/PlotlyRenderer";
 
 type Message = { role: "user" | "assistant"; content: string; html?: string };
 
@@ -460,52 +460,54 @@ export default function UploadPage() {
                     </Button>
                     <div className="text-sm text-muted-foreground">
                       {visualizations.length > 0
-                        ? `${visualizations.length} suggestion(s)`
+                        ? `${visualizations.length} visualization${
+                            visualizations.length > 1 ? "s" : ""
+                          } generated`
                         : ""}
                     </div>
                   </div>
 
                   {visualizations.length > 0 ? (
-                    <div className="space-y-6 max-h-[50vh] overflow-auto">
+                    <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2">
                       {visualizations.map((viz) => (
-                        <Card key={viz.id} className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-semibold mb-1">
-                                {viz.title}
-                              </h3>
-                              {viz.description && (
-                                <p className="text-sm text-muted-foreground mb-2">
-                                  {viz.description}
-                                </p>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Vega-Lite spec
-                            </div>
-                          </div>
+                        <div
+                          key={viz.id}
+                          className="space-y-2 border-2 border-gray-200 rounded-xl"
+                        >
+                          {/* Render the actual Plotly visualization */}
+                          <PlotlyRenderer
+                            data={viz.plotlyData}
+                            layout={viz.plotlyLayout}
+                            config={viz.plotlyConfig}
+                            title={viz.title}
+                            description={viz.description}
+                          />
 
-                          <div className="mt-3">
-                            {/* Render the actual Vega-Lite visualization */}
-                            <VegaLiteRenderer spec={viz.vegaLiteSpec} />
-                          </div>
-
-                          <div className="mt-3 flex gap-2">
+                          {/* Action buttons */}
+                          <div className="flex gap-2 px-4 pb-4">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                // open raw spec in new window (stringified)
-                                const s = JSON.stringify(
-                                  viz.vegaLiteSpec || {},
+                                // Open raw Plotly spec in new window
+                                const spec = {
+                                  data: viz.plotlyData,
+                                  layout: viz.plotlyLayout,
+                                  config: viz.plotlyConfig,
+                                };
+                                const specString = JSON.stringify(
+                                  spec,
                                   null,
                                   2
                                 );
-                                const blob = new Blob([s], {
+                                const blob = new Blob([specString], {
                                   type: "application/json",
                                 });
                                 const url = URL.createObjectURL(blob);
-                                window.open(url, "_blank");
+                                const newWindow = window.open(url, "_blank");
+                                if (newWindow) {
+                                  newWindow.document.title = `${viz.title} - Plotly Spec`;
+                                }
                                 setTimeout(
                                   () => URL.revokeObjectURL(url),
                                   60000
@@ -519,32 +521,91 @@ export default function UploadPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                // copy spec to clipboard
+                                // Copy Plotly spec to clipboard
+                                const spec = {
+                                  data: viz.plotlyData,
+                                  layout: viz.plotlyLayout,
+                                  config: viz.plotlyConfig,
+                                };
                                 navigator.clipboard
-                                  .writeText(
-                                    JSON.stringify(
-                                      viz.vegaLiteSpec || {},
-                                      null,
-                                      2
-                                    )
-                                  )
-                                  .then(() => alert("Spec copied to clipboard"))
-                                  .catch(() => alert("Failed to copy"));
+                                  .writeText(JSON.stringify(spec, null, 2))
+                                  .then(() => {
+                                    // Optional: Show a toast notification instead of alert
+                                    alert("Plotly spec copied to clipboard!");
+                                  })
+                                  .catch(() => {
+                                    alert("Failed to copy spec to clipboard");
+                                  });
                               }}
                             >
                               Copy Spec
                             </Button>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // Download spec as JSON file
+                                const spec = {
+                                  title: viz.title,
+                                  description: viz.description,
+                                  data: viz.plotlyData,
+                                  layout: viz.plotlyLayout,
+                                  config: viz.plotlyConfig,
+                                };
+                                const specString = JSON.stringify(
+                                  spec,
+                                  null,
+                                  2
+                                );
+                                const blob = new Blob([specString], {
+                                  type: "application/json",
+                                });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = `${
+                                  viz.id || "chart"
+                                }-plotly-spec.json`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                              }}
+                            >
+                              Download Spec
+                            </Button>
                           </div>
-                        </Card>
+                        </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-muted-foreground">
-                      No visualizations yet. Click the button above to generate.
-                    </p>
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="mb-4 text-muted-foreground">
+                        <svg
+                          className="w-16 h-16 mx-auto mb-4 opacity-50"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-muted-foreground mb-2">
+                        No visualizations yet
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Click "Generate Visualizations" to create interactive
+                        charts
+                      </p>
+                    </div>
                   )}
                 </TabsContent>
-
                 <TabsContent value="stats">
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">

@@ -5,6 +5,10 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
 import ErrorModal from "@/app/components/ErrorModal";
 import SuccessModal from "@/app/components/SuccessModal";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function ResetPassword() {
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -77,68 +81,53 @@ export default function ResetPassword() {
   };
 
   return (
-    <>
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h2 className="mt-10 text-center text-2xl/9 font-bold tracking-tight text-gray-900">
-          Reset your password
-        </h2>
-      </div>
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-md p-8">
+        <div className="mb-8 text-center">
+          <h2 className="text-3xl font-bold tracking-tight">
+            Reset your password
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Enter the OTP and your new password
+          </p>
+        </div>
 
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Email (disabled) */}
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              Email address
-            </label>
-            <div className="mt-2">
-              <input
-                id="email"
-                name="email"
-                type="email"
-                value={email}
-                disabled
-                className="block w-full rounded-md bg-gray-100 px-3 py-1.5 text-base text-gray-500 outline-none cursor-not-allowed sm:text-sm/6"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email address</Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              value={email}
+              disabled
+              className="bg-muted cursor-not-allowed"
+            />
           </div>
 
-          {/* OTP */}
-          <div>
-            <label
-              htmlFor="otp"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              OTP (6-digit code sent to your email)
-            </label>
-            <div className="mt-2">
-              <input
-                id="otp"
-                name="otp"
-                type="number"
-                placeholder="123456"
-                required
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                autoComplete="one-time-code"
-                className="block w-full rounded-md px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="otp">OTP Code</Label>
+            <Input
+              id="otp"
+              name="otp"
+              type="text"
+              inputMode="numeric"
+              placeholder="Enter 6-digit code"
+              required
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              autoComplete="one-time-code"
+              maxLength={6}
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter the verification code sent to your email
+            </p>
           </div>
 
-          {/* New Password */}
-          <div>
-            <label
-              htmlFor="new-password"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              New Password
-            </label>
-            <div className="mt-2 relative">
-              <input
+          <div className="space-y-2">
+            <Label htmlFor="new-password">New Password</Label>
+            <div className="relative">
+              <Input
                 id="new-password"
                 name="new-password"
                 type={showNewPassword ? "text" : "password"}
@@ -146,12 +135,12 @@ export default function ResetPassword() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
-                className="block w-full rounded-md px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                className="pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute inset-y-0 right-3 flex items-center text-gray-600 cursor-pointer bg-transparent border-none p-0"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={
                   showNewPassword ? "Hide new password" : "Show new password"
                 }
@@ -165,16 +154,10 @@ export default function ResetPassword() {
             </div>
           </div>
 
-          {/* Confirm Password */}
-          <div>
-            <label
-              htmlFor="confirm-password"
-              className="block text-sm/6 font-medium text-gray-900"
-            >
-              Confirm Password
-            </label>
-            <div className="mt-2 relative">
-              <input
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm Password</Label>
+            <div className="relative">
+              <Input
                 id="confirm-password"
                 name="confirm-password"
                 type={showConfirmPassword ? "text" : "password"}
@@ -182,12 +165,12 @@ export default function ResetPassword() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
-                className="block w-full rounded-md px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6"
+                className="pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute inset-y-0 right-3 flex items-center text-gray-600 cursor-pointer bg-transparent border-none p-0"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={
                   showConfirmPassword
                     ? "Hide confirm password"
@@ -203,19 +186,12 @@ export default function ResetPassword() {
             </div>
           </div>
 
-          {/* Submit Button */}
-          <div>
-            <button
-              type="submit"
-              className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm/6 font-semibold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 cursor-pointer"
-            >
-              Reset
-            </button>
-          </div>
+          <Button type="submit" className="w-full">
+            Reset Password
+          </Button>
         </form>
-      </div>
+      </Card>
 
-      {/* Modals */}
       <ErrorModal
         show={showErrorModal}
         onClose={() => setShowErrorModal(false)}
@@ -226,6 +202,6 @@ export default function ResetPassword() {
         onClose={handleSuccessClose}
         message={successMessage}
       />
-    </>
+    </div>
   );
 }

@@ -87,8 +87,8 @@ export function MainNav() {
                 className="text-sm px-5 py-2 rounded-full shadow-sm transition"
                 onClick={() => {
                   try {
-                    localStorage.removeItem("ai_access_token");
-                    localStorage.removeItem("ai_refresh_token");
+                    localStorage.removeItem("access_token");
+                    // localStorage.removeItem("refresh_token");
                   } catch {}
                   window.location.href = "/";
                 }}
