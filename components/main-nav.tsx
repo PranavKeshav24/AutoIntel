@@ -5,15 +5,26 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 
 export function MainNav() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("ai_access_token")
+          : null;
+      setIsAuthed(!!token);
+    } catch {}
+  }, [pathname]);
 
   return (
-    <header className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-black/60 backdrop-blur-md border border-white/10 shadow-xl rounded-full w-[95%] md:w-auto px-4 sm:px-6 lg:px-10 py-3">
+    <header className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-black/60 backdrop-blur-md border border-white/10 shadow-xl rounded-full w-[95%] md:w-auto px-4 sm:px-2 lg:px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-4">
         {/* Left Side: Logo + Links */}
         <div className="flex items-center gap-6">
@@ -33,9 +44,7 @@ export function MainNav() {
                 href={item.href}
                 className={cn(
                   "transition-colors duration-300 hover:text-indigo-400",
-                  pathname === item.href
-                    ? "text-white"
-                    : "text-zinc-400"
+                  pathname === item.href ? "text-white" : "text-zinc-400"
                 )}
               >
                 {item.label}
@@ -44,17 +53,50 @@ export function MainNav() {
           </nav>
         </div>
 
-        {/* Right Side: Mode Toggle + Button + Hamburger */}
+        {/* Right Side: Mode Toggle + Auth + Hamburger */}
         <div className="flex items-center gap-3">
           <ModeToggle />
 
-          {/* Clean Button without blue colors */}
-          <Button
-            variant="outline"
-            className="hidden lg:inline-flex border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white text-sm px-5 py-2 rounded-full shadow-sm transition"
-          >
-            Get Started
-          </Button>
+          {!isAuthed ? (
+            <div className="hidden lg:flex items-center gap-2">
+              <Link href="/login">
+                <Button
+                  variant="outline"
+                  className="border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white text-sm px-5 py-2 rounded-full shadow-sm transition"
+                >
+                  Login
+                </Button>
+              </Link>
+              <Link href="/register">
+                <Button className="text-sm px-5 py-2 rounded-full shadow-sm transition">
+                  Register
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <div className="hidden lg:flex items-center gap-2">
+              <Link href="/profile">
+                <Button
+                  variant="outline"
+                  className="border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white text-sm px-5 py-2 rounded-full shadow-sm transition"
+                >
+                  Profile
+                </Button>
+              </Link>
+              <Button
+                className="text-sm px-5 py-2 rounded-full shadow-sm transition"
+                onClick={() => {
+                  try {
+                    localStorage.removeItem("access_token");
+                    // localStorage.removeItem("refresh_token");
+                  } catch {}
+                  window.location.href = "/";
+                }}
+              >
+                Logout
+              </Button>
+            </div>
+          )}
 
           <button
             className="lg:hidden text-white"
@@ -86,14 +128,58 @@ export function MainNav() {
               </Link>
             ))}
 
-            {/* Same minimal look for mobile button */}
-            <Button
-              variant="outline"
-              className="w-full border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white text-sm py-2 rounded-full transition shadow"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Get Started
-            </Button>
+            {!isAuthed ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Link
+                  href="/login"
+                  className="w-full"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white text-sm py-2 rounded-full transition shadow"
+                  >
+                    Login
+                  </Button>
+                </Link>
+                <Link
+                  href="/register"
+                  className="w-full"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Button className="w-full text-sm py-2 rounded-full transition shadow">
+                    Register
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <Link
+                  href="/profile"
+                  className="w-full"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 hover:text-white text-sm py-2 rounded-full transition shadow"
+                  >
+                    Profile
+                  </Button>
+                </Link>
+                <Button
+                  className="w-full text-sm py-2 rounded-full transition shadow"
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem("ai_access_token");
+                      localStorage.removeItem("ai_refresh_token");
+                    } catch {}
+                    window.location.href = "/";
+                  }}
+                >
+                  Logout
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

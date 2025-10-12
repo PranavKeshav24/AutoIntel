@@ -4,6 +4,7 @@
 /node_modules
 /.pnp
 .pnp.js
+/autointel-package
 
 # testing
 /coverage
@@ -27,7 +28,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
-
+.env
 # vercel
 .vercel
 

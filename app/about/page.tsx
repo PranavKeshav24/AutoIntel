@@ -9,8 +9,8 @@ const teamMembers = [
     image: "https://placehold.co/600x400",
     bio: "Undergraduate student at RNSIT, Data Scientiest with experience in working on AI platforms.",
     social: {
-      linkedin: "#",
-      github: "#",
+      linkedin: "https://www.linkedin.com/in/anirudh248 ",
+      github: "https://github.com/Anirudh-248",
       email: "anirudhphaniraj@gmail.com",
     },
   },
@@ -43,7 +43,7 @@ const teamMembers = [
     bio: "Undergraduate student at RNSIT, full stack engineer focused on creating intuitive data visualization interfaces.",
     social: {
       linkedin: "https://www.linkedin.com/in/pratith-bhat-843792288",
-      github: "#",
+      github: "https://github.com/Pratith544",
       email: "pratithbhat@gmail.com",
     },
   },
@@ -51,7 +51,7 @@ const teamMembers = [
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen py-28 px-4">
+    <div className="min-h-screen py-28 px-12">
       {/* Company Introduction */}
       <section className="container mx-auto px-4 mb-20">
         <h1 className="text-4xl font-bold text-center mb-6">
