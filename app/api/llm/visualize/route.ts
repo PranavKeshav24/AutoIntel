@@ -82,7 +82,7 @@ Return ONLY a JSON array, no markdown formatting.`;
           "X-Title": config.title || "Data Analysis App",
         },
         body: JSON.stringify({
-          model: config.model || "openai/gpt-4o-mini",
+          model: config.model || "openai/gpt-oss-20b:free",
           messages,
           temperature: 0.7,
         }),
