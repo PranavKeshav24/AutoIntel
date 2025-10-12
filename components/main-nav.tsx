@@ -17,7 +17,7 @@ export function MainNav() {
     try {
       const token =
         typeof window !== "undefined"
-          ? localStorage.getItem("ai_access_token")
+          ? localStorage.getItem("access_token")
           : null;
       setIsAuthed(!!token);
     } catch {}
@@ -170,8 +170,8 @@ export function MainNav() {
                   className="w-full text-sm py-2 rounded-full transition shadow"
                   onClick={() => {
                     try {
-                      localStorage.removeItem("ai_access_token");
-                      localStorage.removeItem("ai_refresh_token");
+                      localStorage.removeItem("access_token");
+                      // localStorage.removeItem("ai_refresh_token");
                     } catch {}
                     window.location.href = "/";
                   }}
