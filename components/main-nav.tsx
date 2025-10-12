@@ -16,9 +16,7 @@ export function MainNav() {
   useEffect(() => {
     try {
       const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("access_token")
-          : null;
+        typeof window !== "undefined" ? localStorage.getItem("token") : null;
       setIsAuthed(!!token);
     } catch {}
   }, [pathname]);
@@ -87,7 +85,7 @@ export function MainNav() {
                 className="text-sm px-5 py-2 rounded-full shadow-sm transition"
                 onClick={() => {
                   try {
-                    localStorage.removeItem("access_token");
+                    localStorage.removeItem("token");
                     // localStorage.removeItem("refresh_token");
                   } catch {}
                   window.location.href = "/";
@@ -170,7 +168,7 @@ export function MainNav() {
                   className="w-full text-sm py-2 rounded-full transition shadow"
                   onClick={() => {
                     try {
-                      localStorage.removeItem("access_token");
+                      localStorage.removeItem("token");
                       // localStorage.removeItem("ai_refresh_token");
                     } catch {}
                     window.location.href = "/";
