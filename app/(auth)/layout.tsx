@@ -6,7 +6,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="relative isolate flex min-h-screen md:h-screen flex-col items-center justify-center bg-white dark:bg-black px-6 py-12 lg:px-8">
+    <div className="relative isolate flex min-h-screen flex-col items-center justify-center bg-white dark:bg-black px-6 py-12 lg:px-8">
       {/* Background blur shape - top
       <div
         aria-hidden="true"

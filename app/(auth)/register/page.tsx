@@ -63,7 +63,7 @@ export default function Register() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+    <div className="flex min-h-screen items-center justify-center px-4 py-24">
       <Card className="w-full max-w-md p-8">
         <div className="mb-8 text-center">
           <h2 className="text-3xl font-bold tracking-tight">
