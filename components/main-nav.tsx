@@ -22,7 +22,7 @@ export function MainNav() {
   }, [pathname]);
 
   return (
-    <header className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-black/60 backdrop-blur-md border border-white/10 shadow-xl rounded-full w-[95%] md:w-auto px-4 sm:px-2 lg:px-4 py-3">
+    <header className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-black/60 backdrop-blur-md border border-white/10 shadow-xl rounded-full w-full md:w-auto px-4 sm:px-2 lg:px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-4">
         {/* Left Side: Logo + Links */}
         <div className="flex items-center gap-6">
@@ -36,6 +36,8 @@ export function MainNav() {
             {[
               { label: "About", href: "/about" },
               { label: "Upload", href: "/upload" },
+              // { label: "Dashboard", href: "/dashboard" },
+              // { label: "Settings", href: "/settings" },
             ].map((item) => (
               <Link
                 key={item.href}

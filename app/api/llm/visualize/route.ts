@@ -28,7 +28,7 @@ Total rows: ${dataset.schema.rowCount}
 Sample data (first 10 rows):
 ${JSON.stringify(sampleData, null, 2)}
 
-Create 4 diverse visualizations (bar, line, scatter, pie, box, histogram, etc.) that best represent the data patterns.
+Create 6-10 diverse visualizations (bar, line, scatter, pie, box, histogram, etc.) that best represent the data patterns.
 
 Respond with a JSON array of visualization specs. Each spec should have:
 {
@@ -67,7 +67,7 @@ Return ONLY a JSON array, no markdown formatting.`;
       { role: "system", content: systemPrompt },
       {
         role: "user",
-        content: "Suggest the best 4 visualizations for this dataset",
+        content: "Suggest the best 6-10 visualizations for this dataset",
       },
     ];
 

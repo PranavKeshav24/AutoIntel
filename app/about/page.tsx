@@ -51,15 +51,13 @@ const teamMembers = [
 
 export default function AboutPage() {
   return (
-    <div className="min-h-screen py-28 px-12">
+    <div className="min-h-screen py-28 px-6 md:px-12">
       {/* Company Introduction */}
       <section className="container mx-auto px-4 mb-20">
-        <h1 className="text-4xl font-bold text-center mb-6">
-          About DataInsights AI
-        </h1>
+        <h1 className="text-4xl font-bold text-center mb-6">About AutoIntel</h1>
         <div className="max-w-3xl mx-auto text-center">
           <p className="text-xl text-muted-foreground mb-8">
-            Founded in 2025, DataInsights AI is revolutionizing how businesses
+            Founded in 2025, AutoIntel AI is revolutionizing how businesses
             understand and utilize their data. Our platform combines
             cutting-edge AI technology with intuitive design to make data
             analysis accessible to everyone.

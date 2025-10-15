@@ -32,7 +32,7 @@ ${JSON.stringify(sampleData, null, 2)}
 
 Your task is to:
 1. Answer the user's query based on the data
-2. Suggest relevant visualizations using Vega-Lite specification
+2. Suggest relevant visualizations using Plotly specification, only if the user has asked for it in the query.
 3. Provide follow-up questions
 
 Respond in JSON format:
@@ -41,9 +41,23 @@ Respond in JSON format:
   "visualizations": [
     {
       "id": "unique-id",
-      "title": "Chart title",
-      "description": "Brief description",
-      "vegaLiteSpec": { /* valid Vega-Lite spec */ }
+  "title": "Chart Title",
+  "description": "What this chart shows",
+  "plotlyData": [
+    {
+      "x": [...],
+      "y": [...],
+      "type": "bar|scatter|line|pie|box|histogram|heatmap",
+      "mode": "lines|markers|lines+markers",
+      "name": "Series Name",
+      "marker": { "color": "blue" }
+    }
+  ],
+  "plotlyLayout": {
+    "xaxis": { "title": "X Axis Label" },
+    "yaxis": { "title": "Y Axis Label" },
+    "title": "Chart Title"
+  }
     }
   ],
   "followUps": ["Question 1?", "Question 2?"]
