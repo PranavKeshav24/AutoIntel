@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
     const sampleData = dataset.schema.sampleRows || dataset.rows.slice(0, 10);
 
     const reportQuery =
-      query || "Generate a comprehensive analytical report of this dataset";
+      query ||
+      "Generate a detailed, comprehensive analytical report of this dataset";
 
     const systemPrompt = `You are a data analyst creating professional reports. Generate a comprehensive HTML report based on the dataset.
 
@@ -31,7 +32,7 @@ Total rows: ${dataset.schema.rowCount}
 Sample data:
 ${JSON.stringify(sampleData, null, 2)}
 
-Create a detailed HTML report that includes:
+Create a very detailed beautiful HTML report that includes:
 1. Executive Summary
 2. Data Overview (schema, row counts, data types)
 3. Key Findings and Insights

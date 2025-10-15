@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import html2pdf from "html2pdf.js";
 import {
   DataSet,
   OpenRouterConfig,
@@ -207,6 +206,9 @@ export default function UploadPage() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
+        // Dynamically import html2pdf only on client side
+        const html2pdf = (await import("html2pdf.js")).default;
+
         // Download as PDF with chart rendering
         // Create a hidden iframe to render the HTML with charts
         const iframe = document.createElement("iframe");
