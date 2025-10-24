@@ -1,6 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DataProcessor } from "@/lib/dataProcessor";
 
+// Cache for access token
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function getRedditAccessToken() {
+  // Check if we have a valid cached token
+  if (cachedToken && cachedToken.expiresAt > Date.now()) {
+    return cachedToken.token;
+  }
+
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "Reddit credentials not configured. Please set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET environment variables."
+    );
+  }
+
+  // Get access token using client credentials flow
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+  const tokenResponse = await fetch(
+    "https://www.reddit.com/api/v1/access_token",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "web:reddit-data-fetcher:v1.0.0",
+      },
+      body: "grant_type=client_credentials",
+    }
+  );
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    console.error("Reddit OAuth error:", errorText);
+    throw new Error("Failed to authenticate with Reddit API");
+  }
+
+  const tokenData = await tokenResponse.json();
+
+  // Cache the token (typically valid for 1 hour, we'll cache for 50 minutes)
+  cachedToken = {
+    token: tokenData.access_token,
+    expiresAt: Date.now() + 50 * 60 * 1000,
+  };
+
+  return tokenData.access_token;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { subreddit } = await request.json();
@@ -15,65 +66,97 @@ export async function POST(request: NextRequest) {
     // Clean subreddit name
     const cleanSubreddit = subreddit.replace(/^r\//, "").trim();
 
-    // Fetch from Reddit JSON API with better headers
-    const url = `https://www.reddit.com/r/${cleanSubreddit}/hot.json?limit=100`;
-
-    const response = await fetch(url, {
-      headers: {
-        // More realistic User-Agent
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        Accept: "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-      },
-      // Add cache configuration to potentially help with rate limiting
-      next: { revalidate: 60 }, // Cache for 60 seconds
-    });
-
-    if (!response.ok) {
-      console.error(
-        `Reddit API error: ${response.status} ${response.statusText}`
-      );
-
-      if (response.status === 404) {
-        return NextResponse.json(
-          { error: "Subreddit not found" },
-          { status: 404 }
-        );
-      }
-
-      if (response.status === 403) {
-        return NextResponse.json(
-          {
-            error:
-              "Reddit blocked the request. This may happen due to rate limiting or IP restrictions. Try using Reddit API credentials or wait a few minutes.",
-            suggestion:
-              "Consider using Reddit's official API with authentication for production use.",
-          },
-          { status: 403 }
-        );
-      }
-
-      if (response.status === 429) {
-        return NextResponse.json(
-          {
-            error: "Rate limited by Reddit. Please try again in a few minutes.",
-          },
-          { status: 429 }
-        );
-      }
-
-      return NextResponse.json(
-        { error: `Failed to fetch Reddit data: ${response.statusText}` },
-        { status: response.status }
-      );
+    // Get access token
+    let accessToken: string;
+    try {
+      accessToken = await getRedditAccessToken();
+    } catch (authError: any) {
+      return NextResponse.json({ error: authError.message }, { status: 401 });
     }
 
-    const data = await response.json();
-    const posts = data.data?.children || [];
+    // Fetch from Reddit OAuth API with pagination
+    const allPosts: any[] = [];
+    let after: string | null = null;
+    const maxPages = 10; // Fetch up to 1000 posts (10 pages * 100 per page)
+
+    for (let page = 0; page < maxPages; page++) {
+      const url = `https://oauth.reddit.com/r/${cleanSubreddit}/hot?limit=100${
+        after ? `&after=${after}` : ""
+      }`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "User-Agent": "web:reddit-data-fetcher:v1.0.0",
+        },
+      });
+
+      if (!response.ok) {
+        console.error(
+          `Reddit API error: ${response.status} ${response.statusText}`
+        );
+
+        if (response.status === 404) {
+          return NextResponse.json(
+            { error: "Subreddit not found" },
+            { status: 404 }
+          );
+        }
+
+        if (response.status === 403) {
+          return NextResponse.json(
+            {
+              error:
+                "Access forbidden. The subreddit may be private or restricted.",
+            },
+            { status: 403 }
+          );
+        }
+
+        if (response.status === 429) {
+          return NextResponse.json(
+            {
+              error:
+                "Rate limited by Reddit. Please try again in a few minutes.",
+            },
+            { status: 429 }
+          );
+        }
+
+        if (response.status === 401) {
+          // Clear cached token and retry once
+          cachedToken = null;
+          return NextResponse.json(
+            {
+              error:
+                "Authentication failed. Please check your Reddit API credentials.",
+            },
+            { status: 401 }
+          );
+        }
+
+        return NextResponse.json(
+          { error: `Failed to fetch Reddit data: ${response.statusText}` },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json();
+      const posts = data.data?.children || [];
+
+      if (posts.length === 0) break;
+
+      allPosts.push(...posts);
+      after = data.data?.after;
+
+      // If there's no more data, break early
+      if (!after) break;
+
+      // Add a small delay to be respectful to Reddit's API
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const posts = allPosts;
 
     // Transform Reddit posts to structured data
     const rows = posts.map((post: any) => ({

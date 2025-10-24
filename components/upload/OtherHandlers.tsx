@@ -206,7 +206,10 @@ export function RedditHandler({ onDataLoaded, onError }: any) {
         body: JSON.stringify({ subreddit: subreddit.replace(/^r\//, "") }),
       });
 
-      if (!response.ok) throw new Error("Failed to fetch Reddit data");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to fetch Reddit data");
+      }
 
       const data = await response.json();
       onDataLoaded(data.dataset);
