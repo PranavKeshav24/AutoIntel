@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     // Fetch from Reddit OAuth API with pagination
     const allPosts: any[] = [];
     let after: string | null = null;
-    const maxPages = 10; // Fetch up to 1000 posts (10 pages * 100 per page)
+    const maxPages = 5; // Fetch up to 500 posts (5 pages * 100 per page)
 
     for (let page = 0; page < maxPages; page++) {
       const url = `https://oauth.reddit.com/r/${cleanSubreddit}/hot?limit=100${
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       const response = await fetch(url, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "User-Agent": "web:reddit-data-fetcher:v1.0.0",
+          "User-Agent": "web:autointel.cloud:v1.0.0 (by /u/OkFortune4286)",
         },
       });
 
