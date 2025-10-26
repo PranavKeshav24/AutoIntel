@@ -137,8 +137,6 @@ export class VectorService {
       // Chunk the dataset with smaller chunks
       const chunks = this.chunkDataset(dataset, 10);
 
-      console.log(`Indexing ${chunks.length} chunks for dataset ${dataset.id}`);
-
       // Create embeddings with retry logic
       const chunksWithEmbeddings: any[] = [];
 
@@ -182,8 +180,6 @@ export class VectorService {
       };
 
       this.saveDatasetIndex(index);
-
-      console.log(`Successfully indexed ${chunksWithEmbeddings.length} chunks`);
     } catch (error) {
       console.error("Indexing error:", error);
       throw error;
@@ -200,22 +196,14 @@ export class VectorService {
     topK: number = 5
   ): Promise<Array<{ chunk: VectorChunk; score: number }>> {
     try {
-      console.log(`Searching for: "${query}" in datasets:`, datasetIds);
-
       // Create query embedding
       const queryEmbedding = await this.createEmbedding(query, apiKey);
-      console.log("Query embedding created, length:", queryEmbedding.length);
 
       // Get all chunks for specified datasets
       const allChunks = this.getChunks();
-      console.log("Total chunks in storage:", allChunks.length);
 
       const relevantChunks = allChunks.filter((c) =>
         datasetIds.includes(c.metadata.datasetId)
-      );
-      console.log(
-        "Relevant chunks for selected datasets:",
-        relevantChunks.length
       );
 
       if (relevantChunks.length === 0) {
@@ -239,15 +227,6 @@ export class VectorService {
         .filter((r) => r.score > 0.3) // Lower threshold for better recall
         .sort((a, b) => b.score - a.score)
         .slice(0, topK);
-
-      console.log(`Found ${results.length} relevant chunks`);
-      results.forEach((r, i) => {
-        console.log(
-          `  ${i + 1}. Score: ${r.score.toFixed(3)}, Dataset: ${
-            r.chunk.metadata.datasetName
-          }`
-        );
-      });
 
       return results;
     } catch (error) {

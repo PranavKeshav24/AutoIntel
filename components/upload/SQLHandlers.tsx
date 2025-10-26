@@ -109,7 +109,7 @@ export function SQLiteHandler({
       onUriLoaded(data.dataset);
       setConnectionString("");
     } catch (err: any) {
-      onError(err.message || `Failed to connect to Postgres database`);
+      onError(err.message || `Failed to connect to SQLite database`);
     } finally {
       setLoading(false);
     }
@@ -169,7 +169,7 @@ export function MySQLHandler({ onUriLoaded, onError, dbType = "MySQL" }: any) {
       onUriLoaded(data.dataset);
       setConnectionString("");
     } catch (err: any) {
-      onError(err.message || `Failed to connect to Postgres database`);
+      onError(err.message || `Failed to connect to MySQL database`);
     } finally {
       setLoading(false);
     }
