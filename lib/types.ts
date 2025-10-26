@@ -36,6 +36,7 @@ export interface DataSet {
     name?: string;
     meta?: Record<string, unknown>;
   };
+  id?: string;
 }
 
 export interface DataCleaningOptions {
@@ -100,4 +101,47 @@ export interface LLMReportResponse {
     generatedAt: string;
     rowsAnalyzed: number;
   };
+}
+
+// Vector DB / Knowledge Base Types
+export interface VectorChunk {
+  id: string;
+  text: string;
+  metadata: {
+    datasetId: string;
+    datasetName: string;
+    sourceType: DataSourceType;
+    chunkIndex: number;
+    rowRange: [number, number];
+    columnNames: string[];
+  };
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+  sources?: string[]; // Dataset IDs used in response
+  contexts?: string[]; // Relevant chunks shown
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  datasetIds: string[]; // Active datasets in this chat
+  messages: ChatMessage[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DatasetIndex {
+  id: string;
+  datasetName: string;
+  sourceType: DataSourceType;
+  rowCount: number;
+  columnCount: number;
+  chunkCount: number;
+  indexedAt: Date;
+  status: "indexing" | "ready" | "error";
 }
