@@ -20,7 +20,7 @@ import {
   AdSenseHandler,
 } from "@/components/upload/OtherHandlers";
 import { DataCleaning } from "@/components/upload/DataCleaning";
-import { PreviewTable } from "@/components/upload/PreviewTable";
+import { VectorService } from "@/lib/vector-service";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,8 +42,16 @@ import {
   Database,
   MessageSquare,
   DollarSign,
+  CheckCircle2,
+  X,
 } from "lucide-react";
+import {
+  SQLiteHandler,
+  PostgresHandler,
+  MySQLHandler,
+} from "@/components/upload/SQLHandlers";
 import PlotlyRenderer from "@/components/PlotlyRenderer";
+import { PreviewTable } from "@/components/upload/PreviewTable";
 
 type Message = { role: "user" | "assistant"; content: string; html?: string };
 
@@ -85,9 +93,13 @@ const DATA_SOURCES: {
 export default function UploadPage() {
   const [source, setSource] = useState<DataSourceType>("csv");
   const [dataset, setDataset] = useState<DataSet | null>(null);
+  const [dburi, setDburi] = useState<string>("");
   const [originalDataset, setOriginalDataset] = useState<DataSet | null>(null);
   const [error, setError] = useState<string>("");
   const [openRouterKey, setOpenRouterKey] = useState<string>("");
+  const [indexingProgress, setIndexingProgress] = useState<number>(0);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [showAdSenseBanner, setShowAdSenseBanner] = useState(false);
 
   // Cleaning options
   const [cleaningOptions, setCleaningOptions] = useState<DataCleaningOptions>({
@@ -110,14 +122,59 @@ export default function UploadPage() {
   // Active tab
   const [activeTab, setActiveTab] = useState<string>("table");
 
-  // Download loading state
-  const [downloadLoading, setDownloadLoading] = useState(false);
-
   useEffect(() => {
     try {
       const saved = localStorage.getItem("OPENROUTER_API_KEY");
       if (saved) setOpenRouterKey(saved);
     } catch {}
+  }, []);
+
+  // Handle AdSense authentication callback
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const authStatus = params.get("adsense_auth");
+    const authError = params.get("adsense_error");
+
+    if (authStatus === "success") {
+      setShowAdSenseBanner(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "✓ Google AdSense authenticated successfully! You can now fetch your AdSense data.",
+        },
+      ]);
+
+      // Clean up URL params immediately
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("adsense_auth");
+      window.history.replaceState({}, "", newUrl.pathname + newUrl.hash);
+
+      // Auto-hide banner after 10 seconds
+      const timer = setTimeout(() => setShowAdSenseBanner(false), 10000);
+      return () => clearTimeout(timer);
+    }
+
+    if (authError) {
+      const errorMessages: Record<string, string> = {
+        no_code: "Authentication failed: No authorization code received",
+        config_error: "Configuration error: Google OAuth credentials not set",
+        access_denied: "Authentication cancelled: You denied access",
+      };
+
+      const errorMessage =
+        errorMessages[authError] ||
+        `Authentication error: ${decodeURIComponent(authError)}`;
+      setError(errorMessage);
+
+      // Clean up URL params
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("adsense_error");
+      window.history.replaceState({}, "", newUrl.pathname + newUrl.hash);
+    }
   }, []);
 
   const config: OpenRouterConfig = {
@@ -127,7 +184,7 @@ export default function UploadPage() {
     title: process.env.NEXT_PUBLIC_OPENROUTER_TITLE,
   };
 
-  const handleDataLoaded = (ds: DataSet) => {
+  const handleDataLoaded = async (ds: DataSet) => {
     setDataset(ds);
     setOriginalDataset(ds);
     setError("");
@@ -138,6 +195,35 @@ export default function UploadPage() {
       },
     ]);
     setActiveTab("table");
+  };
+
+  const indexDataset = async (ds: DataSet) => {
+    if (!openRouterKey) {
+      setError("Please set OpenRouter API key to enable chat features");
+      return;
+    }
+
+    setIsIndexing(true);
+    setIndexingProgress(0);
+
+    try {
+      await VectorService.indexDataset(ds, openRouterKey, (progress) => {
+        setIndexingProgress(progress);
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `✓ Dataset indexed successfully! You can now chat with this data. Go to the Chat tab to start.`,
+        },
+      ]);
+    } catch (err: any) {
+      setError(`Failed to index dataset: ${err.message}`);
+    } finally {
+      setIsIndexing(false);
+      setIndexingProgress(0);
+    }
   };
 
   const handleError = (err: string) => {
@@ -185,129 +271,6 @@ export default function UploadPage() {
     }
   };
 
-  const downloadReport = async (
-    html: string,
-    format: "html" | "pdf" = "pdf"
-  ) => {
-    setDownloadLoading(true);
-    try {
-      const timestamp = Date.now();
-      const baseFilename = `report-${timestamp}`;
-
-      if (format === "html") {
-        // Download as HTML
-        const blob = new Blob([html], { type: "text/html" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${baseFilename}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } else {
-        // Dynamically import html2pdf only on client side
-        const html2pdf = (await import("html2pdf.js")).default;
-
-        // Download as PDF with chart rendering
-        // Create a hidden iframe to render the HTML with charts
-        const iframe = document.createElement("iframe");
-        iframe.style.position = "fixed";
-        iframe.style.top = "-10000px";
-        iframe.style.left = "-10000px";
-        iframe.style.width = "1200px";
-        iframe.style.height = "1000px";
-        document.body.appendChild(iframe);
-
-        // Write HTML to iframe
-        const iframeDoc =
-          iframe.contentDocument || iframe.contentWindow?.document;
-        if (!iframeDoc) throw new Error("Failed to access iframe document");
-
-        iframeDoc.open();
-        iframeDoc.write(html);
-        iframeDoc.close();
-
-        // Wait for Chart.js to load and render all charts
-        await new Promise((resolve) => {
-          const checkCharts = () => {
-            const chartScripts = iframeDoc.querySelectorAll("script");
-            let chartJsLoaded = false;
-
-            chartScripts.forEach((script) => {
-              if (script.src && script.src.includes("chart.js")) {
-                chartJsLoaded = true;
-              }
-            });
-
-            if (chartJsLoaded) {
-              // Wait additional time for charts to render
-              setTimeout(resolve, 3000);
-            } else {
-              setTimeout(resolve, 1000);
-            }
-          };
-
-          if (iframeDoc.readyState === "complete") {
-            checkCharts();
-          } else {
-            iframe.onload = checkCharts;
-          }
-        });
-
-        // Configure PDF options
-        const opt = {
-          margin: [10, 10, 10, 10] as [number, number, number, number],
-          filename: `${baseFilename}.pdf`,
-          image: { type: "jpeg" as const, quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            letterRendering: true,
-            allowTaint: true,
-            backgroundColor: "#ffffff",
-          },
-          jsPDF: {
-            unit: "mm" as const,
-            format: "a4" as const,
-            orientation: "portrait" as const,
-          },
-          pagebreak: {
-            mode: ["avoid-all", "css", "legacy"],
-            before: ".page-break-before",
-            after: ".page-break-after",
-          },
-        };
-
-        // Generate PDF from iframe content
-        await html2pdf().set(opt).from(iframeDoc.body).save();
-
-        // Clean up iframe
-        document.body.removeChild(iframe);
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `✓ Report downloaded successfully as ${format.toUpperCase()}!`,
-        },
-      ]);
-    } catch (error: any) {
-      console.error("Download error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `Error downloading report: ${error.message}`,
-        },
-      ]);
-    } finally {
-      setDownloadLoading(false);
-    }
-  };
-
   const sendMessage = async () => {
     if (!input.trim() || !dataset) return;
 
@@ -317,12 +280,9 @@ export default function UploadPage() {
     setLoading(true);
 
     try {
-      // Determine if this is a visualization, report, or query request
-      const isVizRequest = /chart|graph|plot|visual|show me/i.test(userMessage);
       const isReportRequest = /report|summary|document|pdf/i.test(userMessage);
 
       if (isReportRequest) {
-        // Generate report
         const response = await fetch("/api/llm/report", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -336,12 +296,12 @@ export default function UploadPage() {
           ...prev,
           {
             role: "assistant",
-            content: "I've generated a comprehensive report for you.",
+            content:
+              "✓ Report generated successfully! Click below to download.",
             html: data.htmlMarkdown,
           },
         ]);
       } else {
-        // Regular analysis
         const response = await fetch("/api/llm/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -354,6 +314,7 @@ export default function UploadPage() {
 
         if (data.visualizations && data.visualizations.length > 0) {
           setVisualizations(data.visualizations);
+          setActiveTab("charts");
         }
 
         setMessages((prev) => [
@@ -364,10 +325,9 @@ export default function UploadPage() {
 
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     } catch (err: any) {
-      console.error(err);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: `Error: ${err.message}` },
+        { role: "assistant", content: `✗ Error: ${err.message}` },
       ]);
     } finally {
       setLoading(false);
@@ -397,8 +357,33 @@ export default function UploadPage() {
     }
   };
 
+  const downloadReport = (html: string) => {
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `report-${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleUriLoaded = (uri: string) => {
+    setDburi(uri);
+    setError("");
+    setMessages([
+      {
+        role: "assistant",
+        content: `URI loaded successfully! Ready to connect to database.`,
+      },
+    ]);
+    setActiveTab("table");
+  };
+
   const renderDataSourceInput = () => {
     const props = { onDataLoaded: handleDataLoaded, onError: handleError };
+    const sqlprops = { onUriLoaded: handleUriLoaded, onError: handleError };
 
     switch (source) {
       case "csv":
@@ -413,8 +398,11 @@ export default function UploadPage() {
       case "pdf":
         return <TextPdfHandler {...props} type={source} />;
       case "postgres":
+        return <PostgresHandler {...sqlprops} />;
       case "mysql":
+        return <MySQLHandler {...sqlprops} />;
       case "sqlite":
+        return <SQLiteHandler {...sqlprops} />;
       case "mongodb":
         return <DatabaseHandler {...props} dbType={source} />;
       case "reddit":
@@ -434,7 +422,7 @@ export default function UploadPage() {
   }, {} as Record<string, typeof DATA_SOURCES>);
 
   return (
-    <div className="container mx-auto px-6 md:px-20 py-24">
+    <div className="container mx-auto px-4 md:px-16 py-8 md:pt-24">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Data Analysis Platform</h1>
         <p className="text-muted-foreground">
@@ -462,6 +450,27 @@ export default function UploadPage() {
           <Button onClick={saveApiKey}>Save Key</Button>
         </div>
       </Card>
+
+      {/* AdSense Authentication Success Banner */}
+      {showAdSenseBanner && (
+        <Alert className="mb-6 bg-green-50 border-green-200">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-green-800 font-medium">
+              ✓ Google AdSense authenticated successfully! You can now fetch
+              your AdSense data.
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAdSenseBanner(false)}
+              className="h-6 w-6 p-0 text-green-600 hover:text-green-800"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Data Source Selection */}
       <Card className="p-6 mb-6">
@@ -504,8 +513,8 @@ export default function UploadPage() {
         </Alert>
       )}
 
-      {/* Main Content */}
-      {dataset && (
+      {/* Main Content - Non-Database Sources */}
+      {dataset && !["postgres", "mysql", "sqlite"].includes(source) && (
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Left Column - Data View & Cleaning */}
           <div className="lg:col-span-2 space-y-6">
@@ -551,35 +560,33 @@ export default function UploadPage() {
                 <TabsContent value="table">
                   <PreviewTable
                     rows={dataset.rows}
-                    columns={dataset.schema.fields.map((f: any) => f.name)}
+                    columns={dataset.schema.fields.map((f) => f.name)}
                   />
                 </TabsContent>
 
                 <TabsContent value="charts">
-                  <div className="mb-4 flex gap-2 items-center">
+                  <div className="space-y-4">
                     <Button
                       onClick={requestVisualizations}
                       disabled={vizLoading}
                     >
                       {vizLoading ? "Generating..." : "Generate Visualizations"}
                     </Button>
-                    <div className="text-sm text-muted-foreground">
-                      {visualizations.length > 0
-                        ? `${visualizations.length} visualization${
-                            visualizations.length > 1 ? "s" : ""
-                          } generated`
-                        : ""}
-                    </div>
+                    {visualizations.length > 0 && (
+                      <div className="text-sm text-muted-foreground">
+                        {visualizations.length} visualization
+                        {visualizations.length > 1 ? "s" : ""} generated
+                      </div>
+                    )}
                   </div>
 
                   {visualizations.length > 0 ? (
-                    <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2">
+                    <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 mt-4">
                       {visualizations.map((viz) => (
                         <div
                           key={viz.id}
                           className="space-y-2 border-2 border-gray-200 rounded-lg"
                         >
-                          {/* Render the actual Plotly visualization */}
                           <PlotlyRenderer
                             data={viz.plotlyData}
                             layout={viz.plotlyLayout}
@@ -588,13 +595,11 @@ export default function UploadPage() {
                             description={viz.description}
                           />
 
-                          {/* Action buttons */}
                           <div className="flex gap-2 px-4 pb-4">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                // Open raw Plotly spec in new window
                                 const spec = {
                                   data: viz.plotlyData,
                                   layout: viz.plotlyLayout,
@@ -626,7 +631,6 @@ export default function UploadPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                // Copy Plotly spec to clipboard
                                 const spec = {
                                   data: viz.plotlyData,
                                   layout: viz.plotlyLayout,
@@ -635,7 +639,6 @@ export default function UploadPage() {
                                 navigator.clipboard
                                   .writeText(JSON.stringify(spec, null, 2))
                                   .then(() => {
-                                    // Optional: Show a toast notification instead of alert
                                     alert("Plotly spec copied to clipboard!");
                                   })
                                   .catch(() => {
@@ -650,7 +653,6 @@ export default function UploadPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                // Download spec as JSON file
                                 const spec = {
                                   title: viz.title,
                                   description: viz.description,
@@ -685,7 +687,7 @@ export default function UploadPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="flex flex-col items-center justify-center py-12 text-center mt-4">
                       <div className="mb-4 text-muted-foreground">
                         <svg
                           className="w-16 h-16 mx-auto mb-4 opacity-50"
@@ -711,6 +713,7 @@ export default function UploadPage() {
                     </div>
                   )}
                 </TabsContent>
+
                 <TabsContent value="stats">
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -732,7 +735,7 @@ export default function UploadPage() {
                     <Card className="p-4">
                       <h3 className="font-semibold mb-3">Schema</h3>
                       <div className="space-y-2">
-                        {dataset.schema.fields.map((field: any) => (
+                        {dataset.schema.fields.map((field) => (
                           <div
                             key={field.name}
                             className="flex justify-between text-sm"
@@ -768,26 +771,302 @@ export default function UploadPage() {
                         {msg.content}
                       </p>
                       {msg.html && (
-                        <div className="flex gap-2 mt-2">
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => downloadReport(msg.html!, "pdf")}
-                            disabled={downloadLoading}
-                          >
-                            <Download className="h-3 w-3 mr-1" />
-                            {downloadLoading ? "Generating..." : "Download PDF"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => downloadReport(msg.html!, "html")}
-                            disabled={downloadLoading}
-                          >
-                            <Download className="h-3 w-3 mr-1" />
-                            Download HTML
-                          </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2"
+                          onClick={() => downloadReport(msg.html!)}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download Report
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  {loading && (
+                    <div className="mb-3 bg-muted/30 rounded-lg p-3 text-sm">
+                      Analyzing your data...
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </ScrollArea>
+                <div className="flex gap-2">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                    placeholder="Ask about your data..."
+                    disabled={loading}
+                  />
+                  <Button onClick={sendMessage} disabled={loading} size="icon">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content - Database Sources */}
+      {dataset && ["postgres", "mysql", "sqlite"].includes(source) && (
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Dataset View</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {source} Source: {dburi}
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={resetData}>
+                  Reset Data
+                </Button>
+              </div>
+
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="w-full mb-4">
+                  <TabsTrigger value="table" className="flex-1">
+                    <Table2 className="h-4 w-4 mr-2" />
+                    Table
+                  </TabsTrigger>
+                  <TabsTrigger value="charts" className="flex-1">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Charts
+                  </TabsTrigger>
+                  <TabsTrigger value="stats" className="flex-1">
+                    <FileText className="h-4 w-4 mr-2" />
+                    Stats
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="table">
+                  <div className="text-sm text-muted-foreground text-center py-8">
+                    <Database className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>Database connection established</p>
+                    <p className="mt-2">
+                      Use the AI Assistant to query your data
+                    </p>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="charts">
+                  <div className="space-y-4">
+                    <Button
+                      onClick={requestVisualizations}
+                      disabled={vizLoading}
+                    >
+                      {vizLoading ? "Generating..." : "Generate Visualizations"}
+                    </Button>
+                    {visualizations.length > 0 && (
+                      <div className="text-sm text-muted-foreground">
+                        {visualizations.length} visualization
+                        {visualizations.length > 1 ? "s" : ""} generated
+                      </div>
+                    )}
+                  </div>
+
+                  {visualizations.length > 0 ? (
+                    <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 mt-4">
+                      {visualizations.map((viz) => (
+                        <div
+                          key={viz.id}
+                          className="space-y-2 border-2 border-gray-200 rounded-lg"
+                        >
+                          <PlotlyRenderer
+                            data={viz.plotlyData}
+                            layout={viz.plotlyLayout}
+                            config={viz.plotlyConfig}
+                            title={viz.title}
+                            description={viz.description}
+                          />
+
+                          <div className="flex gap-2 px-4 pb-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const spec = {
+                                  data: viz.plotlyData,
+                                  layout: viz.plotlyLayout,
+                                  config: viz.plotlyConfig,
+                                };
+                                const specString = JSON.stringify(
+                                  spec,
+                                  null,
+                                  2
+                                );
+                                const blob = new Blob([specString], {
+                                  type: "application/json",
+                                });
+                                const url = URL.createObjectURL(blob);
+                                const newWindow = window.open(url, "_blank");
+                                if (newWindow) {
+                                  newWindow.document.title = `${viz.title} - Plotly Spec`;
+                                }
+                                setTimeout(
+                                  () => URL.revokeObjectURL(url),
+                                  60000
+                                );
+                              }}
+                            >
+                              View Raw Spec
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const spec = {
+                                  data: viz.plotlyData,
+                                  layout: viz.plotlyLayout,
+                                  config: viz.plotlyConfig,
+                                };
+                                navigator.clipboard
+                                  .writeText(JSON.stringify(spec, null, 2))
+                                  .then(() => {
+                                    alert("Plotly spec copied to clipboard!");
+                                  })
+                                  .catch(() => {
+                                    alert("Failed to copy spec to clipboard");
+                                  });
+                              }}
+                            >
+                              Copy Spec
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const spec = {
+                                  title: viz.title,
+                                  description: viz.description,
+                                  data: viz.plotlyData,
+                                  layout: viz.plotlyLayout,
+                                  config: viz.plotlyConfig,
+                                };
+                                const specString = JSON.stringify(
+                                  spec,
+                                  null,
+                                  2
+                                );
+                                const blob = new Blob([specString], {
+                                  type: "application/json",
+                                });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = `${
+                                  viz.id || "chart"
+                                }-plotly-spec.json`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                              }}
+                            >
+                              Download Spec
+                            </Button>
+                          </div>
                         </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-center mt-4">
+                      <div className="mb-4 text-muted-foreground">
+                        <svg
+                          className="w-16 h-16 mx-auto mb-4 opacity-50"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-muted-foreground mb-2">
+                        No visualizations yet
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Click "Generate Visualizations" to create interactive
+                        charts
+                      </p>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="stats">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <Card className="p-4">
+                        <p className="text-sm text-muted-foreground">
+                          Total Rows
+                        </p>
+                        <p className="text-2xl font-bold">
+                          {dataset.schema.rowCount}
+                        </p>
+                      </Card>
+                      <Card className="p-4">
+                        <p className="text-sm text-muted-foreground">Columns</p>
+                        <p className="text-2xl font-bold">
+                          {dataset.schema.fields.length}
+                        </p>
+                      </Card>
+                    </div>
+                    <Card className="p-4">
+                      <h3 className="font-semibold mb-3">Schema</h3>
+                      <div className="space-y-2">
+                        {dataset.schema.fields.map((field) => (
+                          <div
+                            key={field.name}
+                            className="flex justify-between text-sm"
+                          >
+                            <span className="font-medium">{field.name}</span>
+                            <Badge variant="secondary">{field.type}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </Card>
+          </div>
+
+          {/* Right Column - Chat Assistant for Database */}
+          <div className="lg:col-span-1">
+            <Card className="p-6 sticky top-4">
+              <h2 className="text-xl font-semibold mb-4">AI Assistant</h2>
+              <div className="flex flex-col h-[700px]">
+                <ScrollArea className="flex-1 mb-4 p-4 border rounded-lg">
+                  {messages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`mb-3 ${
+                        msg.role === "assistant"
+                          ? "bg-muted/50 rounded-lg p-3"
+                          : "bg-primary/10 rounded-lg p-3"
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                      {msg.html && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2"
+                          onClick={() => downloadReport(msg.html!)}
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download Report
+                        </Button>
                       )}
                     </div>
                   ))}
