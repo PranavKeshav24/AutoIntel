@@ -18,8 +18,6 @@ export async function POST(
       );
     }
 
-    // Placeholder: implement actual DB connections here
-    let rows: any[] = [];
     let sourceName = "";
 
     switch (dbType) {
@@ -56,28 +54,39 @@ export async function POST(
           { status: 501 }
         );
 
-      case "mongodb":
+      case "mongodb": {
         sourceName = "MongoDB Database";
-        return NextResponse.json(
-          {
-            error:
-              "MongoDB connection not implemented. Please configure in your API route.",
-            hint: "Install 'mongodb' package and implement connection logic",
-          },
-          { status: 501 }
+        // ✅ Ensure the correct export name is used
+        const { connectToMongoDB } = await import("@/lib/mongodb");
+
+        // ✅ Connect to MongoDB
+        const { db } = await connectToMongoDB(connectionString);
+
+        // ✅ Fetch sample documents
+        const collections = await db.listCollections().toArray();
+        const rows: any[] = [];
+
+        for (const col of collections.slice(0, 3)) {
+          const collection = db.collection(col.name);
+          const docs = await collection.find({}).limit(5).toArray();
+          rows.push({ collection: col.name, data: docs });
+        }
+
+        // ✅ Process and return dataset
+        const dataset = DataProcessor.createDataSet(
+          rows,
+          "mongodb" as any, // casting for now until DataProcessor type is updated
+          sourceName
         );
+        return NextResponse.json({ dataset });
+      }
 
       default:
         return NextResponse.json(
-          { error: "Unsupported database type" },
+          { error: `Unsupported database type: ${dbType}` },
           { status: 400 }
         );
     }
-
-    // If you implement DB calls above, use DataProcessor.createDataSet here:
-    // if (rows.length === 0) { ... }
-    // const dataset = DataProcessor.createDataSet(rows, dbType as any, sourceName);
-    // return NextResponse.json({ dataset });
   } catch (error: any) {
     const { dbType } = await params;
     console.error(`Error in ${dbType} connect API:`, error);
