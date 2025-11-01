@@ -535,19 +535,16 @@ export default function UploadPage() {
               data: viz.plotlyData,
             }));
 
-          const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/llm/report`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                dataset,
-                query: userMessage,
-                config,
-                visualizations: selectedVizContext,
-              }),
-            }
-          );
+          const response = await fetch(`/api/llm/report`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              dataset,
+              query: userMessage,
+              config,
+              visualizations: selectedVizContext,
+            }),
+          });
 
           if (!response.ok) throw new Error("Failed to generate report");
 
@@ -565,14 +562,11 @@ export default function UploadPage() {
             },
           ]);
         } else {
-          const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/llm/analyze`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ dataset, query: userMessage, config }),
-            }
-          );
+          const response = await fetch(`/api/llm/analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataset, query: userMessage, config }),
+          });
 
           if (!response.ok) throw new Error("Failed to analyze data");
 
@@ -612,14 +606,11 @@ export default function UploadPage() {
         const data = await requestSQLVisualizations();
         setVisualizations(data.visualizations || data || []);
       } else {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/llm/visualize`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ dataset, config }),
-          }
-        );
+        const response = await fetch(`/api/llm/visualize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataset, config }),
+        });
 
         if (!response.ok) throw new Error("Failed to generate visualizations");
 
