@@ -1,26 +1,23 @@
 "use client";
 
 import React, { useState } from "react";
-import { DataSet } from "@/lib/types";
-import { DataProcessor } from "@/lib/dataProcessor";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Upload,
-  Database,
-  FileJson,
-  FileText,
-  MessageSquare,
-} from "lucide-react";
+import { Database } from "lucide-react";
 
-// Postgres Database Connection Handler
+interface SQLHandlerProps {
+  onUriLoaded: (uri: string, dbType: string) => void;
+  onError: (error: string) => void;
+  dbType?: string;
+}
+
+// PostgreSQL Database Connection Handler
 export function PostgresHandler({
   onUriLoaded,
   onError,
-  dbType = "Postgres",
-}: any) {
+  dbType = "postgresql",
+}: SQLHandlerProps) {
   const [connectionString, setConnectionString] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -30,22 +27,36 @@ export function PostgresHandler({
       return;
     }
 
+    const token = localStorage.getItem("token");
+    if (!token) {
+      onError("Authentication required. Please log in.");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Change this with the Postgres connection API endpoint
-      const response = await fetch(`/api/database/${dbType}/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/connect`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ connectionString }),
+        }
+      );
 
-      if (!response.ok) throw new Error("Failed to connect to database");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to connect to PostgreSQL");
+      }
 
       const data = await response.json();
-      onUriLoaded(connectionString);
+      onUriLoaded(connectionString, dbType);
       setConnectionString("");
     } catch (err: any) {
-      onError(err.message || `Failed to connect to Postgres database`);
+      onError(err.message || "Failed to connect to PostgreSQL database");
     } finally {
       setLoading(false);
     }
@@ -57,16 +68,14 @@ export function PostgresHandler({
         <div className="flex items-center gap-3">
           <Database className="h-8 w-8 text-primary" />
           <div>
-            <p className="text-lg font-medium">
-              Connect to {dbType.toUpperCase()}
-            </p>
+            <p className="text-lg font-medium">Connect to PostgreSQL</p>
             <p className="text-sm text-muted-foreground">
               Enter your database connection string
             </p>
           </div>
         </div>
         <Input
-          placeholder="Connection string..."
+          placeholder="postgresql://user:password@host:port/database"
           value={connectionString}
           onChange={(e) => setConnectionString(e.target.value)}
           disabled={loading}
@@ -79,12 +88,12 @@ export function PostgresHandler({
   );
 }
 
-// SQL Lite Database Connection Handler
+// SQLite Database Connection Handler
 export function SQLiteHandler({
   onUriLoaded,
   onError,
-  dbType = "SQLite",
-}: any) {
+  dbType = "sqlite",
+}: SQLHandlerProps) {
   const [connectionString, setConnectionString] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -94,22 +103,36 @@ export function SQLiteHandler({
       return;
     }
 
+    const token = localStorage.getItem("token");
+    if (!token) {
+      onError("Authentication required. Please log in.");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Change this with the SQL Lite connection API endpoint
-      const response = await fetch(`/api/database/${dbType}/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/connect`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ connectionString }),
+        }
+      );
 
-      if (!response.ok) throw new Error("Failed to connect to database");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to connect to SQLite");
+      }
 
       const data = await response.json();
-      onUriLoaded(data.dataset);
+      onUriLoaded(connectionString, dbType);
       setConnectionString("");
     } catch (err: any) {
-      onError(err.message || `Failed to connect to SQLite database`);
+      onError(err.message || "Failed to connect to SQLite database");
     } finally {
       setLoading(false);
     }
@@ -121,16 +144,14 @@ export function SQLiteHandler({
         <div className="flex items-center gap-3">
           <Database className="h-8 w-8 text-primary" />
           <div>
-            <p className="text-lg font-medium">
-              Connect to {dbType.toUpperCase()}
-            </p>
+            <p className="text-lg font-medium">Connect to SQLite</p>
             <p className="text-sm text-muted-foreground">
-              Enter your database connection string
+              Enter your database connection string or file path
             </p>
           </div>
         </div>
         <Input
-          placeholder="Connection string..."
+          placeholder="sqlite:///path/to/database.db"
           value={connectionString}
           onChange={(e) => setConnectionString(e.target.value)}
           disabled={loading}
@@ -144,7 +165,11 @@ export function SQLiteHandler({
 }
 
 // MySQL Database Connection Handler
-export function MySQLHandler({ onUriLoaded, onError, dbType = "MySQL" }: any) {
+export function MySQLHandler({
+  onUriLoaded,
+  onError,
+  dbType = "mysql",
+}: SQLHandlerProps) {
   const [connectionString, setConnectionString] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -154,22 +179,36 @@ export function MySQLHandler({ onUriLoaded, onError, dbType = "MySQL" }: any) {
       return;
     }
 
+    const token = localStorage.getItem("token");
+    if (!token) {
+      onError("Authentication required. Please log in.");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Change this with the MYSQL connection API endpoint
-      const response = await fetch(`/api/database/${dbType}/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/connect`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ connectionString }),
+        }
+      );
 
-      if (!response.ok) throw new Error("Failed to connect to database");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to connect to MySQL");
+      }
 
       const data = await response.json();
-      onUriLoaded(data.dataset);
+      onUriLoaded(connectionString, dbType);
       setConnectionString("");
     } catch (err: any) {
-      onError(err.message || `Failed to connect to MySQL database`);
+      onError(err.message || "Failed to connect to MySQL database");
     } finally {
       setLoading(false);
     }
@@ -181,16 +220,14 @@ export function MySQLHandler({ onUriLoaded, onError, dbType = "MySQL" }: any) {
         <div className="flex items-center gap-3">
           <Database className="h-8 w-8 text-primary" />
           <div>
-            <p className="text-lg font-medium">
-              Connect to {dbType.toUpperCase()}
-            </p>
+            <p className="text-lg font-medium">Connect to MySQL</p>
             <p className="text-sm text-muted-foreground">
               Enter your database connection string
             </p>
           </div>
         </div>
         <Input
-          placeholder="Connection string..."
+          placeholder="mysql://user:password@host:port/database"
           value={connectionString}
           onChange={(e) => setConnectionString(e.target.value)}
           disabled={loading}
