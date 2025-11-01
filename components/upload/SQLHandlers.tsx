@@ -35,21 +35,24 @@ export function PostgresHandler({
 
     setLoading(true);
     try {
+      // Save the PostgreSQL connection to user profile
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/connect`,
+        `${
+          process.env.NEXT_PUBLIC_API_BASE_URL
+        }/user?postgres_db_url=${encodeURIComponent(connectionString)}`,
         {
-          method: "POST",
+          method: "PUT",
           headers: {
-            "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ connectionString }),
         }
       );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || "Failed to connect to PostgreSQL");
+        throw new Error(
+          errorData.detail || "Failed to save PostgreSQL connection"
+        );
       }
 
       const data = await response.json();
@@ -111,8 +114,9 @@ export function SQLiteHandler({
 
     setLoading(true);
     try {
+      // Seed the SQLite connection to the user account
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/connect`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/sqlite/connect`,
         {
           method: "POST",
           headers: {
@@ -187,8 +191,9 @@ export function MySQLHandler({
 
     setLoading(true);
     try {
+      // Seed the MySQL connection to the user account
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/connect`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/mysql/connect`,
         {
           method: "POST",
           headers: {

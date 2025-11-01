@@ -23,11 +23,11 @@ export default function ProfilePage() {
         setInfo(res);
         try {
           const parsed = typeof res === "string" ? JSON.parse(res as any) : res;
-          setName(parsed?.name || "");
-          setPhone(parsed?.phone_number || "");
-          setPostgres(parsed?.postgres_db_url || "");
-          setSqlite(parsed?.sqlite_db_url || "");
-          setMysql(parsed?.mysql_db_url || "");
+          setName(parsed?.data.name || "");
+          setPhone(parsed?.data.phone_number || "");
+          setPostgres(parsed?.data.postgres_db_url || "");
+          setSqlite(parsed?.data.sqlite_db_url || "");
+          setMysql(parsed?.data.mysql_db_url || "");
         } catch {}
       } catch {}
     })();
@@ -58,27 +58,27 @@ export default function ProfilePage() {
         <h1 className="text-2xl font-semibold">Profile</h1>
         {msg && <div className="text-sm text-muted-foreground">{msg}</div>}
         <Input
-          placeholder="Name"
+          placeholder={`${name}`}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <Input
-          placeholder="Phone"
+          placeholder={`${phone}`}
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
         <Input
-          placeholder="Postgres DB URL"
+          placeholder={`${postgres}`}
           value={postgres}
           onChange={(e) => setPostgres(e.target.value)}
         />
         <Input
-          placeholder="SQLite DB URL"
+          placeholder={`${sqlite}`}
           value={sqlite}
           onChange={(e) => setSqlite(e.target.value)}
         />
         <Input
-          placeholder="MySQL DB URL"
+          placeholder={`${mysql}`}
           value={mysql}
           onChange={(e) => setMysql(e.target.value)}
         />

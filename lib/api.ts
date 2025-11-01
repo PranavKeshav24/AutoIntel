@@ -1,19 +1,19 @@
 export type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+const API_BASE = "https://backend.autointel.cloud";
 
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("ai_access_token");
+  return localStorage.getItem("token");
 }
 
 function setTokens(access?: string | null, refresh?: string | null) {
   if (typeof window === "undefined") return;
   if (access !== undefined && access !== null) {
-    localStorage.setItem("ai_access_token", access);
+    localStorage.setItem("token", access);
   }
   if (refresh !== undefined && refresh !== null) {
-    localStorage.setItem("ai_refresh_token", refresh);
+    localStorage.setItem("token", refresh);
   }
 }
 
@@ -38,7 +38,11 @@ export async function apiFetch<T = any>(
   const res = await fetch(url, {
     method: opts.method || "GET",
     headers,
-    body: opts.isForm ? opts.body : opts.body ? JSON.stringify(opts.body) : undefined,
+    body: opts.isForm
+      ? opts.body
+      : opts.body
+      ? JSON.stringify(opts.body)
+      : undefined,
     signal: opts.signal,
     credentials: "include",
   });
@@ -56,12 +60,19 @@ export async function apiFetch<T = any>(
 }
 
 // Auth APIs
-export async function registerUser(body: { name: string; email: string; password: string }) {
+export async function registerUser(body: {
+  name: string;
+  email: string;
+  password: string;
+}) {
   return apiFetch<string>("/api/v1/register", { method: "POST", body });
 }
 
 export async function loginUser(body: { email: string; password: string }) {
-  const resp = await apiFetch<string>("/api/v1/login", { method: "POST", body });
+  const resp = await apiFetch<string>("/api/v1/login", {
+    method: "POST",
+    body,
+  });
   // Expect backend to return tokens; if string, try to parse
   try {
     const parsed = JSON.parse(resp as unknown as string);
@@ -77,11 +88,16 @@ export async function verifyOtp(body: { otp: string; session_id: string }) {
 }
 
 export async function resendOtp(session_id: string) {
-  return apiFetch<string>(`/api/v1/resend-otp?session_id=${encodeURIComponent(session_id)}`, { method: "POST" });
+  return apiFetch<string>(
+    `/api/v1/resend-otp?session_id=${encodeURIComponent(session_id)}`,
+    { method: "POST" }
+  );
 }
 
 export async function refreshToken() {
-  const resp = await apiFetch<string>("/api/v1/refresh-token", { method: "POST" });
+  const resp = await apiFetch<string>("/api/v1/refresh-token", {
+    method: "POST",
+  });
   try {
     const parsed = JSON.parse(resp as unknown as string);
     setTokens(parsed.access_token, parsed.refresh_token);
@@ -93,13 +109,20 @@ export async function getUserInfo() {
   return apiFetch<string>("/api/v1/user", { method: "GET" });
 }
 
-export async function updateUserInfo(params: Record<string, string | number | boolean | null | undefined>, file?: File) {
+export async function updateUserInfo(
+  params: Record<string, string | number | boolean | null | undefined>,
+  file?: File
+) {
   const form = new FormData();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null) form.append(k, String(v));
   });
   if (file) form.append("profile_pic", file);
-  return apiFetch<string>("/api/v1/user", { method: "PUT", body: form, isForm: true });
+  return apiFetch<string>("/api/v1/user", {
+    method: "PUT",
+    body: form,
+    isForm: true,
+  });
 }
 
 export async function deleteUser() {
@@ -108,15 +131,24 @@ export async function deleteUser() {
 
 // SQL proxy endpoints (question param)
 export async function queryPostgres(question: string) {
-  return apiFetch<string>(`/api/v1/postgresql?question=${encodeURIComponent(question)}`, { method: "POST" });
+  return apiFetch<string>(
+    `/api/v1/postgresql?question=${encodeURIComponent(question)}`,
+    { method: "POST" }
+  );
 }
 
 export async function querySqlite(question: string) {
-  return apiFetch<string>(`/api/v1/sqlite?question=${encodeURIComponent(question)}`, { method: "POST" });
+  return apiFetch<string>(
+    `/api/v1/sqlite?question=${encodeURIComponent(question)}`,
+    { method: "POST" }
+  );
 }
 
 export async function queryMysql(question: string) {
-  return apiFetch<string>(`/api/v1/mysql?question=${encodeURIComponent(question)}`, { method: "POST" });
+  return apiFetch<string>(
+    `/api/v1/mysql?question=${encodeURIComponent(question)}`,
+    { method: "POST" }
+  );
 }
 
 export function logout() {
@@ -126,5 +158,3 @@ export function logout() {
     localStorage.removeItem("ai_refresh_token");
   }
 }
-
-

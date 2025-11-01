@@ -53,6 +53,7 @@ import {
 } from "@/components/upload/SQLHandlers";
 import PlotlyRenderer from "@/components/PlotlyRenderer";
 import { PreviewTable } from "@/components/upload/PreviewTable";
+import { getUserInfo } from "@/lib/api";
 
 type Message = { role: "user" | "assistant"; content: string; html?: string };
 
@@ -102,10 +103,12 @@ export default function UploadPage() {
   const [indexingProgress, setIndexingProgress] = useState<number>(0);
   const [isIndexing, setIsIndexing] = useState(false);
   const [showAdSenseBanner, setShowAdSenseBanner] = useState(false);
+
+  // SQL-specific states
   const [sqlTableData, setSqlTableData] = useState<any[]>([]);
   const [sqlColumns, setSqlColumns] = useState<string[]>([]);
-  const [existingConnections, setExistingConnections] = useState<any[]>([]);
-  const [loadingConnections, setLoadingConnections] = useState(false);
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [loadingUserInfo, setLoadingUserInfo] = useState(false);
 
   // Cleaning options
   const [cleaningOptions, setCleaningOptions] = useState<DataCleaningOptions>({
@@ -135,33 +138,50 @@ export default function UploadPage() {
       if (saved) setOpenRouterKey(saved);
     } catch {}
 
-    loadExistingConnections();
+    // Load user info to get existing SQL connections
+    loadUserInfo();
   }, []);
 
-  const loadExistingConnections = async () => {
+  // Auto-load SQL connection when source changes and connection exists
+  useEffect(() => {
+    if (!userInfo) return;
+
+    const isSQLSource = ["postgresql", "mysql", "sqlite"].includes(source);
+    if (!isSQLSource) return;
+
+    const connectionUrl = (() => {
+      switch (source) {
+        case "postgresql":
+          return { url: userInfo.postgres_db_url, dbType: "postgresql" };
+        case "mysql":
+          return { url: userInfo.mysql_db_url, dbType: "mysql" };
+        case "sqlite":
+          return { url: userInfo.sqlite_db_url, dbType: "sqlite" };
+        default:
+          return null;
+      }
+    })();
+
+    // If connection exists and dataset is not already loaded, auto-load it
+    if (connectionUrl?.url && !dataset) {
+      loadExistingConnection(connectionUrl.dbType, connectionUrl.url);
+    }
+  }, [source, userInfo]);
+
+  const loadUserInfo = async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    setLoadingConnections(true);
+    setLoadingUserInfo(true);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/connections`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const res = await getUserInfo();
 
-      if (response.ok) {
-        const data = await response.json();
-        setExistingConnections(data.connections || []);
-      }
+      const data = typeof res === "string" ? JSON.parse(res as any) : res;
+      setUserInfo(data.data);
     } catch (err) {
-      console.log("No existing connections or API not available");
+      console.log("Failed to load user info:", err);
     } finally {
-      setLoadingConnections(false);
+      setLoadingUserInfo(false);
     }
   };
 
@@ -303,23 +323,25 @@ export default function UploadPage() {
     ]);
     setActiveTab("table");
 
-    // Reload connections list to include the new one
-    loadExistingConnections();
+    // Reload user info to include the new connection
+    loadUserInfo();
   };
 
-  const loadExistingConnection = async (connection: any) => {
-    setDburi(connection.connectionString || connection.uri);
-    setDbType(connection.dbType);
+  const loadExistingConnection = async (
+    dbType: string,
+    connectionString: string
+  ) => {
+    setDburi(connectionString);
+    setDbType(dbType);
     setError("");
 
     const mockDataset: DataSet = {
       source: {
-        kind: connection.dbType as DataSourceType,
-        name: connection.name || `${connection.dbType.toUpperCase()} Database`,
+        kind: dbType as DataSourceType,
+        name: `${dbType.toUpperCase()} Database`,
         meta: {
-          uri: connection.connectionString || connection.uri,
-          connectionString: connection.connectionString || connection.uri,
-          connectionId: connection.id,
+          uri: connectionString,
+          connectionString: connectionString,
         },
       },
       schema: {
@@ -333,9 +355,7 @@ export default function UploadPage() {
     setMessages([
       {
         role: "assistant",
-        content: `✓ Loaded existing ${connection.dbType.toUpperCase()} connection: ${
-          connection.name || "Database"
-        }. Ready to query!`,
+        content: `✓ Loaded existing ${dbType.toUpperCase()} connection. Ready to query!`,
       },
     ]);
     setActiveTab("table");
@@ -350,13 +370,13 @@ export default function UploadPage() {
     let endpoint = "";
     switch (dbType) {
       case "postgresql":
-        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/postgresql`;
         break;
       case "sqlite":
-        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/sqlite`;
         break;
       case "mysql":
-        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/mysql`;
         break;
       default:
         throw new Error("Invalid database type");
@@ -390,18 +410,18 @@ export default function UploadPage() {
     switch (dbType) {
       case "postgresql":
         endpoint = question
-          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/visualization`
-          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/visualization/suggest`;
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/postgresql/visualization`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/postgresql/visualization/suggest`;
         break;
       case "sqlite":
         endpoint = question
-          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/visualization`
-          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/visualization/suggest`;
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/sqlite/visualization`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/sqlite/visualization/suggest`;
         break;
       case "mysql":
         endpoint = question
-          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/visualization`
-          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/visualization/suggest`;
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/mysql/visualization`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/mysql/visualization/suggest`;
         break;
       default:
         throw new Error("Invalid database type");
@@ -435,13 +455,13 @@ export default function UploadPage() {
     let endpoint = "";
     switch (dbType) {
       case "postgresql":
-        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/report`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/postgresql/report`;
         break;
       case "sqlite":
-        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/report`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/sqlite/report`;
         break;
       case "mysql":
-        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/report`;
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/mysql/report`;
         break;
       default:
         throw new Error("Invalid database type");
@@ -611,7 +631,7 @@ export default function UploadPage() {
         const data = await requestSQLVisualizations();
         setVisualizations(data.visualizations || data || []);
       } else {
-        const response = await fetch(`/api/llm/visualize`, {
+        const response = await fetch("/api/llm/visualize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ dataset, config }),
@@ -770,86 +790,58 @@ export default function UploadPage() {
     const props = { onDataLoaded: handleDataLoaded, onError: handleError };
     const sqlprops = { onUriLoaded: handleUriLoaded, onError: handleError };
 
-    // Show existing connections for SQL sources
+    // Check if SQL source has existing connection
     const isSQLSource = ["postgres", "mysql", "sqlite"].includes(source);
-    const dbTypeMap: Record<string, string> = {
-      postgres: "postgresql",
-      mysql: "mysql",
-      sqlite: "sqlite",
-    };
-    const relevantConnections = isSQLSource
-      ? existingConnections.filter((conn) => conn.dbType === dbTypeMap[source])
-      : [];
 
-    return (
-      <>
-        {isSQLSource && relevantConnections.length > 0 && (
-          <Card className="p-6 mb-4">
-            <h3 className="text-lg font-semibold mb-3">Existing Connections</h3>
-            <div className="space-y-2">
-              {relevantConnections.map((conn) => (
-                <Button
-                  key={conn.id}
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => loadExistingConnection(conn)}
-                >
-                  <Database className="h-4 w-4 mr-2" />
-                  <div className="text-left flex-1">
-                    <p className="font-medium">
-                      {conn.name || `${conn.dbType.toUpperCase()} Database`}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {conn.connectionString || conn.uri}
-                    </p>
-                  </div>
-                </Button>
-              ))}
-            </div>
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
-                  Or connect new
-                </span>
-              </div>
-            </div>
-          </Card>
-        )}
+    const existingConnection =
+      isSQLSource && userInfo
+        ? (() => {
+            switch (source) {
+              case "postgresql":
+                return userInfo.postgres_db_url;
+              case "mysql":
+                return userInfo.mysql_db_url;
+              case "sqlite":
+                return userInfo.sqlite_db_url;
+              default:
+                return null;
+            }
+          })()
+        : null;
 
-        {(() => {
-          switch (source) {
-            case "csv":
-              return <CsvHandler {...props} />;
-            case "excel":
-              return <ExcelHandler {...props} />;
-            case "sheets":
-              return <SheetsHandler {...props} />;
-            case "json":
-              return <JsonHandler {...props} />;
-            case "text":
-            case "pdf":
-              return <TextPdfHandler {...props} type={source} />;
-            case "postgresql":
-              return <PostgresHandler {...sqlprops} dbType="postgresql" />;
-            case "mysql":
-              return <MySQLHandler {...sqlprops} dbType="mysql" />;
-            case "sqlite":
-              return <SQLiteHandler {...sqlprops} dbType="sqlite" />;
-            case "mongodb":
-              return <DatabaseHandler {...props} dbType={source} />;
-            case "reddit":
-              return <RedditHandler {...props} />;
-            case "adsense":
-              return <AdSenseHandler {...props} />;
-            default:
-              return <Card className="p-6">Select a data source to begin</Card>;
-          }
-        })()}
-      </>
-    );
+    // If SQL source has existing connection, don't show input (chat interface will show)
+    if (isSQLSource && existingConnection) {
+      return null;
+    }
+
+    // Show input for sources without existing connections
+    switch (source) {
+      case "csv":
+        return <CsvHandler {...props} />;
+      case "excel":
+        return <ExcelHandler {...props} />;
+      case "sheets":
+        return <SheetsHandler {...props} />;
+      case "json":
+        return <JsonHandler {...props} />;
+      case "text":
+      case "pdf":
+        return <TextPdfHandler {...props} type={source} />;
+      case "postgresql":
+        return <PostgresHandler {...sqlprops} dbType="postgresql" />;
+      case "mysql":
+        return <MySQLHandler {...sqlprops} dbType="mysql" />;
+      case "sqlite":
+        return <SQLiteHandler {...sqlprops} dbType="sqlite" />;
+      case "mongodb":
+        return <DatabaseHandler {...props} dbType={source} />;
+      case "reddit":
+        return <RedditHandler {...props} />;
+      case "adsense":
+        return <AdSenseHandler {...props} />;
+      default:
+        return <Card className="p-6">Select a data source to begin</Card>;
+    }
   };
 
   const groupedSources = DATA_SOURCES.reduce((acc, source) => {
