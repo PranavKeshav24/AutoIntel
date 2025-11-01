@@ -120,7 +120,7 @@ export default function UploadPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
-
+  const [downloadLoading, setDownloadLoading] = useState(false);
   // Visualization states
   const [visualizations, setVisualizations] = useState<VisualizationSpec[]>([]);
   const [vizLoading, setVizLoading] = useState(false);
@@ -484,8 +484,11 @@ export default function UploadPage() {
           const selectedVizContext = visualizations
             .filter((viz) => selectedVizIds.has(viz.id))
             .map((viz) => ({
+              id: viz.id,
               title: viz.title,
               description: viz.description,
+              plotlyData: viz.plotlyData,
+              plotlyLayout: viz.plotlyLayout,
             }));
 
           const reportData = await generateSQLReport(userMessage);
@@ -530,19 +533,21 @@ export default function UploadPage() {
           const selectedVizContext = visualizations
             .filter((viz) => selectedVizIds.has(viz.id))
             .map((viz) => ({
+              id: viz.id,
               title: viz.title,
               description: viz.description,
-              data: viz.plotlyData,
+              plotlyData: viz.plotlyData,
+              plotlyLayout: viz.plotlyLayout,
             }));
 
-          const response = await fetch(`/api/llm/report`, {
+          const response = await fetch("/api/llm/report", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               dataset,
               query: userMessage,
               config,
-              visualizations: selectedVizContext,
+              selectedVisualizations: selectedVizContext,
             }),
           });
 
@@ -562,7 +567,7 @@ export default function UploadPage() {
             },
           ]);
         } else {
-          const response = await fetch(`/api/llm/analyze`, {
+          const response = await fetch("/api/llm/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ dataset, query: userMessage, config }),
@@ -638,16 +643,127 @@ export default function UploadPage() {
     });
   };
 
-  const downloadReport = (html: string) => {
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `report-${Date.now()}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const downloadReport = async (
+    html: string,
+    format: "html" | "pdf" = "pdf"
+  ) => {
+    setDownloadLoading(true);
+    try {
+      const timestamp = Date.now();
+      const baseFilename = `report-${timestamp}`;
+
+      if (format === "html") {
+        // Download as HTML
+        const blob = new Blob([html], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${baseFilename}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        // Dynamically import html2pdf only on client side
+        const html2pdf = (await import("html2pdf.js")).default;
+
+        // Download as PDF with chart rendering
+        // Create a hidden iframe to render the HTML with charts
+        const iframe = document.createElement("iframe");
+        iframe.style.position = "fixed";
+        iframe.style.top = "-10000px";
+        iframe.style.left = "-10000px";
+        iframe.style.width = "1200px";
+        iframe.style.height = "1000px";
+        document.body.appendChild(iframe);
+
+        // Write HTML to iframe
+        const iframeDoc =
+          iframe.contentDocument || iframe.contentWindow?.document;
+        if (!iframeDoc) throw new Error("Failed to access iframe document");
+
+        iframeDoc.open();
+        iframeDoc.write(html);
+        iframeDoc.close();
+
+        // Wait for Chart.js to load and render all charts
+        await new Promise((resolve) => {
+          const checkCharts = () => {
+            const chartScripts = iframeDoc.querySelectorAll("script");
+            let chartJsLoaded = false;
+
+            chartScripts.forEach((script) => {
+              if (script.src && script.src.includes("chart.js")) {
+                chartJsLoaded = true;
+              }
+            });
+
+            if (chartJsLoaded) {
+              // Wait additional time for charts to render
+              setTimeout(resolve, 3000);
+            } else {
+              setTimeout(resolve, 1000);
+            }
+          };
+
+          if (iframeDoc.readyState === "complete") {
+            checkCharts();
+          } else {
+            iframe.onload = checkCharts;
+          }
+        });
+
+        // Configure PDF options
+        const opt = {
+          margin: [10, 10, 10, 10] as [number, number, number, number],
+          filename: `${baseFilename}.pdf`,
+          image: { type: "jpeg" as const, quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            letterRendering: true,
+            allowTaint: true,
+            backgroundColor: "#ffffff",
+          },
+          jsPDF: {
+            unit: "mm" as const,
+            format: "a4" as const,
+            orientation: "portrait" as const,
+          },
+          pagebreak: {
+            mode: ["avoid-all", "css", "legacy"],
+            before: ".page-break-before",
+            after: ".page-break-after",
+          },
+        };
+
+        // Generate PDF from iframe content
+        await html2pdf().set(opt).from(iframeDoc.body).save();
+
+        // Clean up iframe
+        document.body.removeChild(iframe);
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `✓ Report downloaded successfully as ${format.toUpperCase()}!`,
+        },
+      ]);
+    } catch (error: any) {
+      console.error("Download error:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Error downloading report: ${error.message}`,
+        },
+      ]);
+    } finally {
+      setDownloadLoading(false);
+    }
   };
 
   const renderDataSourceInput = () => {
@@ -1190,15 +1306,26 @@ export default function UploadPage() {
                         {msg.content}
                       </p>
                       {msg.html && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-2"
-                          onClick={() => downloadReport(msg.html!)}
-                        >
-                          <Download className="h-3 w-3 mr-1" />
-                          Download Report
-                        </Button>
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => downloadReport(msg.html!, "pdf")}
+                            disabled={downloadLoading}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            {downloadLoading ? "Generating..." : "Download PDF"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadReport(msg.html!, "html")}
+                            disabled={downloadLoading}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Download HTML
+                          </Button>
+                        </div>
                       )}
                     </div>
                   ))}

@@ -3,7 +3,8 @@ import { DataSet, LLMReportResponse } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
-    const { dataset, query, config } = await request.json();
+    const { dataset, query, config, selectedVisualizations } =
+      await request.json();
 
     if (!dataset || !config?.apiKey) {
       return NextResponse.json(
@@ -23,7 +24,16 @@ export async function POST(request: NextRequest) {
       "Generate a detailed, comprehensive analytical report of this dataset";
 
     const systemPrompt = `You are a data analyst creating professional reports. Generate a comprehensive HTML report based on the dataset.
+Selected Visualizations: ${
+      selectedVisualizations && selectedVisualizations.length > 0
+        ? selectedVisualizations.join(", ")
+        : "None"
+    }.
+Use Chart.js for charts. Ensure charts are compatible with PDF rendering as per instructions.;
 
+You must include the selected visualizations in the report. If none are selected, choose appropriate visualizations based on the data.
+
+The dataset is provided in JSON format with the following schema:
 Dataset Schema:
 ${schemaSummary}
 
