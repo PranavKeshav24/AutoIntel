@@ -28,6 +28,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertCircle,
   Send,
@@ -73,7 +74,7 @@ const DATA_SOURCES: {
   { value: "text", label: "Text File", icon: FileText, category: "Files" },
   { value: "pdf", label: "PDF", icon: FileText, category: "Files" },
   {
-    value: "postgres",
+    value: "postgresql",
     label: "PostgreSQL",
     icon: Database,
     category: "Databases",
@@ -94,12 +95,17 @@ export default function UploadPage() {
   const [source, setSource] = useState<DataSourceType>("csv");
   const [dataset, setDataset] = useState<DataSet | null>(null);
   const [dburi, setDburi] = useState<string>("");
+  const [dbType, setDbType] = useState<string>("");
   const [originalDataset, setOriginalDataset] = useState<DataSet | null>(null);
   const [error, setError] = useState<string>("");
   const [openRouterKey, setOpenRouterKey] = useState<string>("");
   const [indexingProgress, setIndexingProgress] = useState<number>(0);
   const [isIndexing, setIsIndexing] = useState(false);
   const [showAdSenseBanner, setShowAdSenseBanner] = useState(false);
+  const [sqlTableData, setSqlTableData] = useState<any[]>([]);
+  const [sqlColumns, setSqlColumns] = useState<string[]>([]);
+  const [existingConnections, setExistingConnections] = useState<any[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
 
   // Cleaning options
   const [cleaningOptions, setCleaningOptions] = useState<DataCleaningOptions>({
@@ -118,6 +124,7 @@ export default function UploadPage() {
   // Visualization states
   const [visualizations, setVisualizations] = useState<VisualizationSpec[]>([]);
   const [vizLoading, setVizLoading] = useState(false);
+  const [selectedVizIds, setSelectedVizIds] = useState<Set<string>>(new Set());
 
   // Active tab
   const [activeTab, setActiveTab] = useState<string>("table");
@@ -127,7 +134,36 @@ export default function UploadPage() {
       const saved = localStorage.getItem("OPENROUTER_API_KEY");
       if (saved) setOpenRouterKey(saved);
     } catch {}
+
+    loadExistingConnections();
   }, []);
+
+  const loadExistingConnections = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    setLoadingConnections(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/connections`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setExistingConnections(data.connections || []);
+      }
+    } catch (err) {
+      console.log("No existing connections or API not available");
+    } finally {
+      setLoadingConnections(false);
+    }
+  };
 
   // Handle AdSense authentication callback
   useEffect(() => {
@@ -148,12 +184,10 @@ export default function UploadPage() {
         },
       ]);
 
-      // Clean up URL params immediately
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("adsense_auth");
       window.history.replaceState({}, "", newUrl.pathname + newUrl.hash);
 
-      // Auto-hide banner after 10 seconds
       const timer = setTimeout(() => setShowAdSenseBanner(false), 10000);
       return () => clearTimeout(timer);
     }
@@ -170,7 +204,6 @@ export default function UploadPage() {
         `Authentication error: ${decodeURIComponent(authError)}`;
       setError(errorMessage);
 
-      // Clean up URL params
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("adsense_error");
       window.history.replaceState({}, "", newUrl.pathname + newUrl.hash);
@@ -195,35 +228,6 @@ export default function UploadPage() {
       },
     ]);
     setActiveTab("table");
-  };
-
-  const indexDataset = async (ds: DataSet) => {
-    if (!openRouterKey) {
-      setError("Please set OpenRouter API key to enable chat features");
-      return;
-    }
-
-    setIsIndexing(true);
-    setIndexingProgress(0);
-
-    try {
-      await VectorService.indexDataset(ds, openRouterKey, (progress) => {
-        setIndexingProgress(progress);
-      });
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `✓ Dataset indexed successfully! You can now chat with this data. Go to the Chat tab to start.`,
-        },
-      ]);
-    } catch (err: any) {
-      setError(`Failed to index dataset: ${err.message}`);
-    } finally {
-      setIsIndexing(false);
-      setIndexingProgress(0);
-    }
   };
 
   const handleError = (err: string) => {
@@ -271,8 +275,199 @@ export default function UploadPage() {
     }
   };
 
+  const handleUriLoaded = async (uri: string, type: string) => {
+    setDburi(uri);
+    setDbType(type);
+    setError("");
+
+    // Create a mock dataset for SQL sources
+    const mockDataset: DataSet = {
+      source: {
+        kind: type as DataSourceType,
+        name: `${type.toUpperCase()} Database`,
+        meta: { uri, connectionString: uri },
+      },
+      schema: {
+        fields: [],
+        rowCount: 0,
+      },
+      rows: [],
+    };
+
+    setDataset(mockDataset);
+    setMessages([
+      {
+        role: "assistant",
+        content: `✓ Connected to ${type.toUpperCase()} database successfully! Use the AI Assistant to query your data or generate visualizations.`,
+      },
+    ]);
+    setActiveTab("table");
+
+    // Reload connections list to include the new one
+    loadExistingConnections();
+  };
+
+  const loadExistingConnection = async (connection: any) => {
+    setDburi(connection.connectionString || connection.uri);
+    setDbType(connection.dbType);
+    setError("");
+
+    const mockDataset: DataSet = {
+      source: {
+        kind: connection.dbType as DataSourceType,
+        name: connection.name || `${connection.dbType.toUpperCase()} Database`,
+        meta: {
+          uri: connection.connectionString || connection.uri,
+          connectionString: connection.connectionString || connection.uri,
+          connectionId: connection.id,
+        },
+      },
+      schema: {
+        fields: [],
+        rowCount: 0,
+      },
+      rows: [],
+    };
+
+    setDataset(mockDataset);
+    setMessages([
+      {
+        role: "assistant",
+        content: `✓ Loaded existing ${connection.dbType.toUpperCase()} connection: ${
+          connection.name || "Database"
+        }. Ready to query!`,
+      },
+    ]);
+    setActiveTab("table");
+  };
+
+  const fetchSQLData = async (question: string) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    let endpoint = "";
+    switch (dbType) {
+      case "postgresql":
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql`;
+        break;
+      case "sqlite":
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite`;
+        break;
+      case "mysql":
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql`;
+        break;
+      default:
+        throw new Error("Invalid database type");
+    }
+
+    const response = await fetch(
+      `${endpoint}?question=${encodeURIComponent(question)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Failed to fetch data");
+    }
+
+    return await response.json();
+  };
+
+  const requestSQLVisualizations = async (question?: string) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    let endpoint = "";
+    switch (dbType) {
+      case "postgresql":
+        endpoint = question
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/visualization`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/visualization/suggest`;
+        break;
+      case "sqlite":
+        endpoint = question
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/visualization`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/visualization/suggest`;
+        break;
+      case "mysql":
+        endpoint = question
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/visualization`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/visualization/suggest`;
+        break;
+      default:
+        throw new Error("Invalid database type");
+    }
+
+    const url = question
+      ? `${endpoint}?question=${encodeURIComponent(question)}`
+      : endpoint;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Failed to generate visualizations");
+    }
+
+    return await response.json();
+  };
+
+  const generateSQLReport = async (question?: string) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    let endpoint = "";
+    switch (dbType) {
+      case "postgresql":
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/postgresql/report`;
+        break;
+      case "sqlite":
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/sqlite/report`;
+        break;
+      case "mysql":
+        endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/mysql/report`;
+        break;
+      default:
+        throw new Error("Invalid database type");
+    }
+
+    const url = question
+      ? `${endpoint}?question=${encodeURIComponent(question)}`
+      : endpoint;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Failed to generate report");
+    }
+
+    return await response.json();
+  };
+
   const sendMessage = async () => {
-    if (!input.trim() || !dataset) return;
+    if (!input.trim()) return;
 
     const userMessage = input.trim();
     setInput("");
@@ -280,47 +475,119 @@ export default function UploadPage() {
     setLoading(true);
 
     try {
+      const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
       const isReportRequest = /report|summary|document|pdf/i.test(userMessage);
 
-      if (isReportRequest) {
-        const response = await fetch("/api/llm/report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dataset, query: userMessage, config }),
-        });
+      if (isSQLSource) {
+        if (isReportRequest) {
+          // Get selected visualizations context
+          const selectedVizContext = visualizations
+            .filter((viz) => selectedVizIds.has(viz.id))
+            .map((viz) => ({
+              title: viz.title,
+              description: viz.description,
+            }));
 
-        if (!response.ok) throw new Error("Failed to generate report");
+          const reportData = await generateSQLReport(userMessage);
 
-        const data = await response.json();
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content:
-              "✓ Report generated successfully! Click below to download.",
-            html: data.htmlMarkdown,
-          },
-        ]);
-      } else {
-        const response = await fetch("/api/llm/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dataset, query: userMessage, config }),
-        });
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `✓ Report generated successfully! ${
+                selectedVizContext.length > 0
+                  ? `Including ${selectedVizContext.length} selected visualization(s).`
+                  : ""
+              } Click below to download.`,
+              html: reportData,
+            },
+          ]);
+        } else {
+          const data = await fetchSQLData(userMessage);
 
-        if (!response.ok) throw new Error("Failed to analyze data");
+          // If data contains table results, update the preview
+          if (data.rows && data.columns) {
+            setSqlTableData(data.rows);
+            setSqlColumns(data.columns);
+            setActiveTab("table");
+          }
 
-        const data = await response.json();
-
-        if (data.visualizations && data.visualizations.length > 0) {
-          setVisualizations(data.visualizations);
-          setActiveTab("charts");
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content:
+                data.answer ||
+                `✓ Query executed successfully! ${
+                  data.rows?.length || 0
+                } rows returned.`,
+            },
+          ]);
         }
+      } else if (dataset) {
+        // Regular dataset handling
+        if (isReportRequest) {
+          const selectedVizContext = visualizations
+            .filter((viz) => selectedVizIds.has(viz.id))
+            .map((viz) => ({
+              title: viz.title,
+              description: viz.description,
+              data: viz.plotlyData,
+            }));
 
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: data.answer },
-        ]);
+          const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/llm/report`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                dataset,
+                query: userMessage,
+                config,
+                visualizations: selectedVizContext,
+              }),
+            }
+          );
+
+          if (!response.ok) throw new Error("Failed to generate report");
+
+          const data = await response.json();
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `✓ Report generated successfully! ${
+                selectedVizContext.length > 0
+                  ? `Including ${selectedVizContext.length} selected visualization(s).`
+                  : ""
+              } Click below to download.`,
+              html: data.htmlMarkdown,
+            },
+          ]);
+        } else {
+          const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/llm/analyze`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dataset, query: userMessage, config }),
+            }
+          );
+
+          if (!response.ok) throw new Error("Failed to analyze data");
+
+          const data = await response.json();
+
+          if (data.visualizations && data.visualizations.length > 0) {
+            setVisualizations(data.visualizations);
+            setActiveTab("charts");
+          }
+
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: data.answer },
+          ]);
+        }
       }
 
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -335,26 +602,49 @@ export default function UploadPage() {
   };
 
   const requestVisualizations = async () => {
-    if (!dataset) return;
+    if (!dataset && !dbType) return;
 
     setVizLoading(true);
     try {
-      const response = await fetch("/api/llm/visualize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataset, config }),
-      });
+      const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
 
-      if (!response.ok) throw new Error("Failed to generate visualizations");
+      if (isSQLSource) {
+        const data = await requestSQLVisualizations();
+        setVisualizations(data.visualizations || data || []);
+      } else {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/llm/visualize`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataset, config }),
+          }
+        );
 
-      const data = await response.json();
-      setVisualizations(data.visualizations || []);
+        if (!response.ok) throw new Error("Failed to generate visualizations");
+
+        const data = await response.json();
+        setVisualizations(data.visualizations || []);
+      }
+
       setActiveTab("charts");
     } catch (err: any) {
       setError(err.message);
     } finally {
       setVizLoading(false);
     }
+  };
+
+  const toggleVizSelection = (vizId: string) => {
+    setSelectedVizIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(vizId)) {
+        newSet.delete(vizId);
+      } else {
+        newSet.add(vizId);
+      }
+      return newSet;
+    });
   };
 
   const downloadReport = (html: string) => {
@@ -369,57 +659,99 @@ export default function UploadPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleUriLoaded = (uri: string) => {
-    setDburi(uri);
-    setError("");
-    setMessages([
-      {
-        role: "assistant",
-        content: `URI loaded successfully! Ready to connect to database.`,
-      },
-    ]);
-    setActiveTab("table");
-  };
-
   const renderDataSourceInput = () => {
     const props = { onDataLoaded: handleDataLoaded, onError: handleError };
     const sqlprops = { onUriLoaded: handleUriLoaded, onError: handleError };
 
-    switch (source) {
-      case "csv":
-        return <CsvHandler {...props} />;
-      case "excel":
-        return <ExcelHandler {...props} />;
-      case "sheets":
-        return <SheetsHandler {...props} />;
-      case "json":
-        return <JsonHandler {...props} />;
-      case "text":
-      case "pdf":
-        return <TextPdfHandler {...props} type={source} />;
-      case "postgres":
-        return <PostgresHandler {...sqlprops} />;
-      case "mysql":
-        return <MySQLHandler {...sqlprops} />;
-      case "sqlite":
-        return <SQLiteHandler {...sqlprops} />;
-      case "mongodb":
-        return <DatabaseHandler {...props} dbType={source} />;
-      case "reddit":
-        return <RedditHandler {...props} />;
-      case "adsense":
-        return <AdSenseHandler {...props} />;
-      default:
-        return <Card className="p-6">Select a data source to begin</Card>;
-    }
+    // Show existing connections for SQL sources
+    const isSQLSource = ["postgres", "mysql", "sqlite"].includes(source);
+    const dbTypeMap: Record<string, string> = {
+      postgres: "postgresql",
+      mysql: "mysql",
+      sqlite: "sqlite",
+    };
+    const relevantConnections = isSQLSource
+      ? existingConnections.filter((conn) => conn.dbType === dbTypeMap[source])
+      : [];
+
+    return (
+      <>
+        {isSQLSource && relevantConnections.length > 0 && (
+          <Card className="p-6 mb-4">
+            <h3 className="text-lg font-semibold mb-3">Existing Connections</h3>
+            <div className="space-y-2">
+              {relevantConnections.map((conn) => (
+                <Button
+                  key={conn.id}
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => loadExistingConnection(conn)}
+                >
+                  <Database className="h-4 w-4 mr-2" />
+                  <div className="text-left flex-1">
+                    <p className="font-medium">
+                      {conn.name || `${conn.dbType.toUpperCase()} Database`}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {conn.connectionString || conn.uri}
+                    </p>
+                  </div>
+                </Button>
+              ))}
+            </div>
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or connect new
+                </span>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {(() => {
+          switch (source) {
+            case "csv":
+              return <CsvHandler {...props} />;
+            case "excel":
+              return <ExcelHandler {...props} />;
+            case "sheets":
+              return <SheetsHandler {...props} />;
+            case "json":
+              return <JsonHandler {...props} />;
+            case "text":
+            case "pdf":
+              return <TextPdfHandler {...props} type={source} />;
+            case "postgresql":
+              return <PostgresHandler {...sqlprops} dbType="postgresql" />;
+            case "mysql":
+              return <MySQLHandler {...sqlprops} dbType="mysql" />;
+            case "sqlite":
+              return <SQLiteHandler {...sqlprops} dbType="sqlite" />;
+            case "mongodb":
+              return <DatabaseHandler {...props} dbType={source} />;
+            case "reddit":
+              return <RedditHandler {...props} />;
+            case "adsense":
+              return <AdSenseHandler {...props} />;
+            default:
+              return <Card className="p-6">Select a data source to begin</Card>;
+          }
+        })()}
+      </>
+    );
   };
 
-  // Group sources by category
   const groupedSources = DATA_SOURCES.reduce((acc, source) => {
     if (!acc[source.category]) acc[source.category] = [];
     acc[source.category].push(source);
     return acc;
   }, {} as Record<string, typeof DATA_SOURCES>);
+
+  const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
 
   return (
     <div className="container mx-auto px-4 md:px-16 py-8 md:pt-24">
@@ -513,18 +845,20 @@ export default function UploadPage() {
         </Alert>
       )}
 
-      {/* Main Content - Non-Database Sources */}
-      {dataset && !["postgres", "mysql", "sqlite"].includes(source) && (
+      {/* Main Content */}
+      {dataset && (
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Column - Data View & Cleaning */}
+          {/* Left Column - Data View */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Data Cleaning */}
-            <DataCleaning
-              options={cleaningOptions}
-              onChange={setCleaningOptions}
-              onApply={applyCleaning}
-              disabled={loading}
-            />
+            {/* Data Cleaning - Only for non-SQL sources */}
+            {!isSQLSource && (
+              <DataCleaning
+                options={cleaningOptions}
+                onChange={setCleaningOptions}
+                onApply={applyCleaning}
+                disabled={loading}
+              />
+            )}
 
             {/* Data Display */}
             <Card className="p-6">
@@ -532,13 +866,16 @@ export default function UploadPage() {
                 <div>
                   <h2 className="text-xl font-semibold">Dataset View</h2>
                   <p className="text-sm text-muted-foreground">
-                    {dataset.schema.rowCount} rows ×{" "}
-                    {dataset.schema.fields.length} columns
+                    {isSQLSource
+                      ? `${dbType.toUpperCase()} Database: ${dburi}`
+                      : `${dataset.schema.rowCount} rows × ${dataset.schema.fields.length} columns`}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={resetData}>
-                  Reset Data
-                </Button>
+                {!isSQLSource && (
+                  <Button variant="outline" size="sm" onClick={resetData}>
+                    Reset Data
+                  </Button>
+                )}
               </div>
 
               <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -558,20 +895,43 @@ export default function UploadPage() {
                 </TabsList>
 
                 <TabsContent value="table">
-                  <PreviewTable
-                    rows={dataset.rows}
-                    columns={dataset.schema.fields.map((f) => f.name)}
-                  />
+                  {isSQLSource ? (
+                    sqlTableData.length > 0 ? (
+                      <PreviewTable rows={sqlTableData} columns={sqlColumns} />
+                    ) : (
+                      <div className="text-sm text-muted-foreground text-center py-8">
+                        <Database className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                        <p>Database connection established</p>
+                        <p className="mt-2">
+                          Use the AI Assistant to query your data
+                        </p>
+                      </div>
+                    )
+                  ) : (
+                    <PreviewTable
+                      rows={dataset.rows}
+                      columns={dataset.schema.fields.map((f) => f.name)}
+                    />
+                  )}
                 </TabsContent>
 
                 <TabsContent value="charts">
                   <div className="space-y-4">
-                    <Button
-                      onClick={requestVisualizations}
-                      disabled={vizLoading}
-                    >
-                      {vizLoading ? "Generating..." : "Generate Visualizations"}
-                    </Button>
+                    <div className="flex items-center justify-between">
+                      <Button
+                        onClick={requestVisualizations}
+                        disabled={vizLoading}
+                      >
+                        {vizLoading
+                          ? "Generating..."
+                          : "Generate Visualizations"}
+                      </Button>
+                      {selectedVizIds.size > 0 && (
+                        <Badge variant="secondary">
+                          {selectedVizIds.size} selected for report
+                        </Badge>
+                      )}
+                    </div>
                     {visualizations.length > 0 && (
                       <div className="text-sm text-muted-foreground">
                         {visualizations.length} visualization
@@ -585,8 +945,32 @@ export default function UploadPage() {
                       {visualizations.map((viz) => (
                         <div
                           key={viz.id}
-                          className="space-y-2 border-2 border-gray-200 rounded-lg"
+                          className={`space-y-2 border-2 rounded-lg transition-all ${
+                            selectedVizIds.has(viz.id)
+                              ? "border-primary shadow-md"
+                              : "border-gray-200"
+                          }`}
                         >
+                          <div className="flex items-start gap-3 p-4 pb-2">
+                            <Checkbox
+                              id={`viz-${viz.id}`}
+                              checked={selectedVizIds.has(viz.id)}
+                              onCheckedChange={() => toggleVizSelection(viz.id)}
+                              className="mt-1"
+                            />
+                            <label
+                              htmlFor={`viz-${viz.id}`}
+                              className="flex-1 cursor-pointer text-sm"
+                            >
+                              <span className="font-medium">
+                                Select for report context
+                              </span>
+                              <p className="text-muted-foreground text-xs mt-1">
+                                Include this visualization in generated reports
+                              </p>
+                            </label>
+                          </div>
+
                           <PlotlyRenderer
                             data={viz.plotlyData}
                             layout={viz.plotlyLayout}
@@ -596,37 +980,6 @@ export default function UploadPage() {
                           />
 
                           <div className="flex gap-2 px-4 pb-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const spec = {
-                                  data: viz.plotlyData,
-                                  layout: viz.plotlyLayout,
-                                  config: viz.plotlyConfig,
-                                };
-                                const specString = JSON.stringify(
-                                  spec,
-                                  null,
-                                  2
-                                );
-                                const blob = new Blob([specString], {
-                                  type: "application/json",
-                                });
-                                const url = URL.createObjectURL(blob);
-                                const newWindow = window.open(url, "_blank");
-                                if (newWindow) {
-                                  newWindow.document.title = `${viz.title} - Plotly Spec`;
-                                }
-                                setTimeout(
-                                  () => URL.revokeObjectURL(url),
-                                  60000
-                                );
-                              }}
-                            >
-                              View Raw Spec
-                            </Button>
-
                             <Button
                               variant="outline"
                               size="sm"
@@ -715,38 +1068,102 @@ export default function UploadPage() {
                 </TabsContent>
 
                 <TabsContent value="stats">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                  {isSQLSource ? (
+                    <div className="space-y-4">
                       <Card className="p-4">
                         <p className="text-sm text-muted-foreground">
-                          Total Rows
+                          Database Type
                         </p>
                         <p className="text-2xl font-bold">
-                          {dataset.schema.rowCount}
+                          {dbType.toUpperCase()}
                         </p>
                       </Card>
                       <Card className="p-4">
-                        <p className="text-sm text-muted-foreground">Columns</p>
-                        <p className="text-2xl font-bold">
-                          {dataset.schema.fields.length}
-                        </p>
+                        <h3 className="font-semibold mb-3">
+                          Connection Details
+                        </h3>
+                        <div className="space-y-2">
+                          <div className="text-sm">
+                            <span className="font-medium">URI:</span>
+                            <p className="text-muted-foreground break-all mt-1">
+                              {dburi}
+                            </p>
+                          </div>
+                          {sqlTableData.length > 0 && (
+                            <>
+                              <div className="text-sm">
+                                <span className="font-medium">
+                                  Last Query Rows:
+                                </span>
+                                <p className="text-muted-foreground mt-1">
+                                  {sqlTableData.length}
+                                </p>
+                              </div>
+                              <div className="text-sm">
+                                <span className="font-medium">Columns:</span>
+                                <p className="text-muted-foreground mt-1">
+                                  {sqlColumns.length}
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </Card>
+                      {sqlColumns.length > 0 && (
+                        <Card className="p-4">
+                          <h3 className="font-semibold mb-3">
+                            Last Query Schema
+                          </h3>
+                          <div className="space-y-2">
+                            {sqlColumns.map((col) => (
+                              <div
+                                key={col}
+                                className="flex justify-between text-sm"
+                              >
+                                <span className="font-medium">{col}</span>
+                                <Badge variant="secondary">column</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <Card className="p-4">
+                          <p className="text-sm text-muted-foreground">
+                            Total Rows
+                          </p>
+                          <p className="text-2xl font-bold">
+                            {dataset.schema.rowCount}
+                          </p>
+                        </Card>
+                        <Card className="p-4">
+                          <p className="text-sm text-muted-foreground">
+                            Columns
+                          </p>
+                          <p className="text-2xl font-bold">
+                            {dataset.schema.fields.length}
+                          </p>
+                        </Card>
+                      </div>
+                      <Card className="p-4">
+                        <h3 className="font-semibold mb-3">Schema</h3>
+                        <div className="space-y-2">
+                          {dataset.schema.fields.map((field) => (
+                            <div
+                              key={field.name}
+                              className="flex justify-between text-sm"
+                            >
+                              <span className="font-medium">{field.name}</span>
+                              <Badge variant="secondary">{field.type}</Badge>
+                            </div>
+                          ))}
+                        </div>
                       </Card>
                     </div>
-                    <Card className="p-4">
-                      <h3 className="font-semibold mb-3">Schema</h3>
-                      <div className="space-y-2">
-                        {dataset.schema.fields.map((field) => (
-                          <div
-                            key={field.name}
-                            className="flex justify-between text-sm"
-                          >
-                            <span className="font-medium">{field.name}</span>
-                            <Badge variant="secondary">{field.type}</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  </div>
+                  )}
                 </TabsContent>
               </Tabs>
             </Card>
@@ -756,293 +1173,17 @@ export default function UploadPage() {
           <div className="lg:col-span-1">
             <Card className="p-6 sticky top-4">
               <h2 className="text-xl font-semibold mb-4">AI Assistant</h2>
-              <div className="flex flex-col h-[700px]">
-                <ScrollArea className="flex-1 mb-4 p-4 border rounded-lg">
-                  {messages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`mb-3 ${
-                        msg.role === "assistant"
-                          ? "bg-muted/50 rounded-lg p-3"
-                          : "bg-primary/10 rounded-lg p-3"
-                      }`}
-                    >
-                      <p className="text-sm whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
-                      {msg.html && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="mt-2"
-                          onClick={() => downloadReport(msg.html!)}
-                        >
-                          <Download className="h-3 w-3 mr-1" />
-                          Download Report
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                  {loading && (
-                    <div className="mb-3 bg-muted/30 rounded-lg p-3 text-sm">
-                      Analyzing your data...
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </ScrollArea>
-                <div className="flex gap-2">
-                  <Input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-                    placeholder="Ask about your data..."
-                    disabled={loading}
-                  />
-                  <Button onClick={sendMessage} disabled={loading} size="icon">
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content - Database Sources */}
-      {dataset && ["postgres", "mysql", "sqlite"].includes(source) && (
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl font-semibold">Dataset View</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {source} Source: {dburi}
+              {selectedVizIds.size > 0 && (
+                <div className="mb-4 p-3 bg-primary/10 rounded-lg">
+                  <p className="text-sm font-medium">
+                    📊 {selectedVizIds.size} visualization
+                    {selectedVizIds.size > 1 ? "s" : ""} selected
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    These will be included as context when generating reports
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={resetData}>
-                  Reset Data
-                </Button>
-              </div>
-
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="w-full mb-4">
-                  <TabsTrigger value="table" className="flex-1">
-                    <Table2 className="h-4 w-4 mr-2" />
-                    Table
-                  </TabsTrigger>
-                  <TabsTrigger value="charts" className="flex-1">
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    Charts
-                  </TabsTrigger>
-                  <TabsTrigger value="stats" className="flex-1">
-                    <FileText className="h-4 w-4 mr-2" />
-                    Stats
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="table">
-                  <div className="text-sm text-muted-foreground text-center py-8">
-                    <Database className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>Database connection established</p>
-                    <p className="mt-2">
-                      Use the AI Assistant to query your data
-                    </p>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="charts">
-                  <div className="space-y-4">
-                    <Button
-                      onClick={requestVisualizations}
-                      disabled={vizLoading}
-                    >
-                      {vizLoading ? "Generating..." : "Generate Visualizations"}
-                    </Button>
-                    {visualizations.length > 0 && (
-                      <div className="text-sm text-muted-foreground">
-                        {visualizations.length} visualization
-                        {visualizations.length > 1 ? "s" : ""} generated
-                      </div>
-                    )}
-                  </div>
-
-                  {visualizations.length > 0 ? (
-                    <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 mt-4">
-                      {visualizations.map((viz) => (
-                        <div
-                          key={viz.id}
-                          className="space-y-2 border-2 border-gray-200 rounded-lg"
-                        >
-                          <PlotlyRenderer
-                            data={viz.plotlyData}
-                            layout={viz.plotlyLayout}
-                            config={viz.plotlyConfig}
-                            title={viz.title}
-                            description={viz.description}
-                          />
-
-                          <div className="flex gap-2 px-4 pb-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const spec = {
-                                  data: viz.plotlyData,
-                                  layout: viz.plotlyLayout,
-                                  config: viz.plotlyConfig,
-                                };
-                                const specString = JSON.stringify(
-                                  spec,
-                                  null,
-                                  2
-                                );
-                                const blob = new Blob([specString], {
-                                  type: "application/json",
-                                });
-                                const url = URL.createObjectURL(blob);
-                                const newWindow = window.open(url, "_blank");
-                                if (newWindow) {
-                                  newWindow.document.title = `${viz.title} - Plotly Spec`;
-                                }
-                                setTimeout(
-                                  () => URL.revokeObjectURL(url),
-                                  60000
-                                );
-                              }}
-                            >
-                              View Raw Spec
-                            </Button>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const spec = {
-                                  data: viz.plotlyData,
-                                  layout: viz.plotlyLayout,
-                                  config: viz.plotlyConfig,
-                                };
-                                navigator.clipboard
-                                  .writeText(JSON.stringify(spec, null, 2))
-                                  .then(() => {
-                                    alert("Plotly spec copied to clipboard!");
-                                  })
-                                  .catch(() => {
-                                    alert("Failed to copy spec to clipboard");
-                                  });
-                              }}
-                            >
-                              Copy Spec
-                            </Button>
-
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const spec = {
-                                  title: viz.title,
-                                  description: viz.description,
-                                  data: viz.plotlyData,
-                                  layout: viz.plotlyLayout,
-                                  config: viz.plotlyConfig,
-                                };
-                                const specString = JSON.stringify(
-                                  spec,
-                                  null,
-                                  2
-                                );
-                                const blob = new Blob([specString], {
-                                  type: "application/json",
-                                });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement("a");
-                                a.href = url;
-                                a.download = `${
-                                  viz.id || "chart"
-                                }-plotly-spec.json`;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                URL.revokeObjectURL(url);
-                              }}
-                            >
-                              Download Spec
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center mt-4">
-                      <div className="mb-4 text-muted-foreground">
-                        <svg
-                          className="w-16 h-16 mx-auto mb-4 opacity-50"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={1.5}
-                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-muted-foreground mb-2">
-                        No visualizations yet
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Click "Generate Visualizations" to create interactive
-                        charts
-                      </p>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="stats">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <Card className="p-4">
-                        <p className="text-sm text-muted-foreground">
-                          Total Rows
-                        </p>
-                        <p className="text-2xl font-bold">
-                          {dataset.schema.rowCount}
-                        </p>
-                      </Card>
-                      <Card className="p-4">
-                        <p className="text-sm text-muted-foreground">Columns</p>
-                        <p className="text-2xl font-bold">
-                          {dataset.schema.fields.length}
-                        </p>
-                      </Card>
-                    </div>
-                    <Card className="p-4">
-                      <h3 className="font-semibold mb-3">Schema</h3>
-                      <div className="space-y-2">
-                        {dataset.schema.fields.map((field) => (
-                          <div
-                            key={field.name}
-                            className="flex justify-between text-sm"
-                          >
-                            <span className="font-medium">{field.name}</span>
-                            <Badge variant="secondary">{field.type}</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </Card>
-          </div>
-
-          {/* Right Column - Chat Assistant for Database */}
-          <div className="lg:col-span-1">
-            <Card className="p-6 sticky top-4">
-              <h2 className="text-xl font-semibold mb-4">AI Assistant</h2>
+              )}
               <div className="flex flex-col h-[700px]">
                 <ScrollArea className="flex-1 mb-4 p-4 border rounded-lg">
                   {messages.map((msg, idx) => (
@@ -1072,7 +1213,9 @@ export default function UploadPage() {
                   ))}
                   {loading && (
                     <div className="mb-3 bg-muted/30 rounded-lg p-3 text-sm">
-                      Analyzing your data...
+                      {isSQLSource
+                        ? "Querying database..."
+                        : "Analyzing your data..."}
                     </div>
                   )}
                   <div ref={chatEndRef} />
@@ -1082,7 +1225,11 @@ export default function UploadPage() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-                    placeholder="Ask about your data..."
+                    placeholder={
+                      isSQLSource
+                        ? "Ask a question about your database..."
+                        : "Ask about your data..."
+                    }
                     disabled={loading}
                   />
                   <Button onClick={sendMessage} disabled={loading} size="icon">
