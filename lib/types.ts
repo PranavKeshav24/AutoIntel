@@ -145,3 +145,47 @@ export interface DatasetIndex {
   indexedAt: Date;
   status: "indexing" | "ready" | "error";
 }
+
+export type Message = {
+  role: "user" | "assistant";
+  content: string;
+  html?: string;
+  sqlData?: {
+    question: string;
+    generated_sql: string;
+    results: any[];
+  };
+};
+
+export type DataSourceItem = {
+  value: DataSourceType;
+  label: string;
+  icon: any;
+  category: string;
+};
+
+export type UploadPageState = {
+  source: DataSourceType;
+  dataset: DataSet | null;
+  dburi: string;
+  dbType: string;
+  originalDataset: DataSet | null;
+  error: string;
+  openRouterKey: string;
+  indexingProgress: number;
+  isIndexing: boolean;
+  showAdSenseBanner: boolean;
+  sqlTableData: any[];
+  sqlColumns: string[];
+  userInfo: any;
+  loadingUserInfo: boolean;
+  cleaningOptions: DataCleaningOptions;
+  messages: Message[];
+  input: string;
+  loading: boolean;
+  downloadLoading: boolean;
+  visualizations: VisualizationSpec[];
+  vizLoading: boolean;
+  selectedVizIds: Set<string>;
+  activeTab: string;
+};
