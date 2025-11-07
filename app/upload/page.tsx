@@ -45,6 +45,10 @@ import {
   DollarSign,
   CheckCircle2,
   X,
+  Loader2,
+  Code,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   SQLiteHandler,
@@ -55,7 +59,16 @@ import PlotlyRenderer from "@/components/PlotlyRenderer";
 import { PreviewTable } from "@/components/upload/PreviewTable";
 import { getUserInfo } from "@/lib/api";
 
-type Message = { role: "user" | "assistant"; content: string; html?: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  html?: string;
+  sqlData?: {
+    question: string;
+    generated_sql: string;
+    results: any[];
+  };
+};
 
 const DATA_SOURCES: {
   value: DataSourceType;
@@ -92,6 +105,115 @@ const DATA_SOURCES: {
   },
 ];
 
+// SQL Result Display Component
+const SQLResultDisplay = ({ sqlData }: { sqlData: Message["sqlData"] }) => {
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  if (!sqlData) return null;
+
+  const copySQL = () => {
+    navigator.clipboard.writeText(sqlData.generated_sql);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2000);
+  };
+
+  // Extract columns from results
+  const columns =
+    sqlData.results.length > 0 ? Object.keys(sqlData.results[0]) : [];
+  const rows = sqlData.results;
+
+  return (
+    <div className="mt-3 space-y-3 max-w-xs">
+      {/* Question */}
+      <div className="border-2 rounded-lg p-3">
+        <p className="text-xs font-semibold text-black dark:text-white">
+          Question:
+        </p>
+        <p className="text-sm text-black dark:text-white">{sqlData.question}</p>
+      </div>
+
+      {/* Generated SQL */}
+      <div className="border-2 rounded-lg p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Code className="h-3 w-3 text-gray-600" />
+            <p className="text-xs font-semibold text-black dark:text-white">
+              Generated SQL
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={copySQL}
+            className="h-6 px-2"
+          >
+            {copiedSql ? (
+              <Check className="h-3 w-3 text-green-600" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </Button>
+        </div>
+        <pre className="text-xs bg-white dark:bg-slate-900 p-2 rounded border-2 overflow-x-auto">
+          <code className="text-black dark:text-gray-200">
+            {sqlData.generated_sql}
+          </code>
+        </pre>
+      </div>
+
+      {/* Results Table */}
+      <div className="border-2 rounded-lg overflow-hidden">
+        <div className="px-3 py-2 border-b border-2">
+          <p className="text-xs font-semibold text-black dark:text-white">
+            Results ({rows.length} row{rows.length !== 1 ? "s" : ""})
+          </p>
+        </div>
+        <div className="max-h-64 overflow-auto">
+          {rows.length > 0 ? (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0">
+                <tr>
+                  {columns.map((col) => (
+                    <th
+                      key={col}
+                      className="px-3 py-2 text-left font-semibold text-black dark:text-white border-b border-2"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, idx) => (
+                  <tr
+                    key={idx}
+                    className={idx % 2 === 0 ? "bg-none" : "bg-none"}
+                  >
+                    {columns.map((col) => (
+                      <td
+                        key={col}
+                        className="px-3 py-2 text-black dark:text-white border-b-2"
+                      >
+                        {row[col] !== null && row[col] !== undefined
+                          ? String(row[col])
+                          : "—"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-6 text-center text-gray-500 text-sm">
+              No results returned
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function UploadPage() {
   const [source, setSource] = useState<DataSourceType>("csv");
   const [dataset, setDataset] = useState<DataSet | null>(null);
@@ -124,6 +246,7 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [downloadLoading, setDownloadLoading] = useState(false);
+
   // Visualization states
   const [visualizations, setVisualizations] = useState<VisualizationSpec[]>([]);
   const [vizLoading, setVizLoading] = useState(false);
@@ -138,11 +261,9 @@ export default function UploadPage() {
       if (saved) setOpenRouterKey(saved);
     } catch {}
 
-    // Load user info to get existing SQL connections
     loadUserInfo();
   }, []);
 
-  // Auto-load SQL connection when source changes and connection exists
   useEffect(() => {
     if (!userInfo) return;
 
@@ -162,7 +283,6 @@ export default function UploadPage() {
       }
     })();
 
-    // If connection exists and dataset is not already loaded, auto-load it
     if (connectionUrl?.url && !dataset) {
       loadExistingConnection(connectionUrl.dbType, connectionUrl.url);
     }
@@ -175,7 +295,6 @@ export default function UploadPage() {
     setLoadingUserInfo(true);
     try {
       const res = await getUserInfo();
-
       const data = typeof res === "string" ? JSON.parse(res as any) : res;
       setUserInfo(data.data);
     } catch (err) {
@@ -185,7 +304,6 @@ export default function UploadPage() {
     }
   };
 
-  // Handle AdSense authentication callback
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -300,7 +418,6 @@ export default function UploadPage() {
     setDbType(type);
     setError("");
 
-    // Create a mock dataset for SQL sources
     const mockDataset: DataSet = {
       source: {
         kind: type as DataSourceType,
@@ -323,7 +440,6 @@ export default function UploadPage() {
     ]);
     setActiveTab("table");
 
-    // Reload user info to include the new connection
     loadUserInfo();
   };
 
@@ -443,7 +559,41 @@ export default function UploadPage() {
       throw new Error(errorData.detail || "Failed to generate visualizations");
     }
 
-    return await response.json();
+    const data = await response.json();
+
+    const allVizs: VisualizationSpec[] = [];
+
+    if (data.visualizations && typeof data.visualizations === "object") {
+      Object.entries(data.visualizations).forEach(
+        ([tableName, tableData]: [string, any]) => {
+          if (
+            tableData.visualizations &&
+            Array.isArray(tableData.visualizations)
+          ) {
+            tableData.visualizations.forEach((viz: any) => {
+              allVizs.push({
+                ...viz,
+                title: `[${tableName}] ${viz.title}`,
+                tableName: tableName,
+              });
+            });
+          }
+        }
+      );
+    } else if (data.data && data.layout) {
+      allVizs.push({
+        id: `viz-${Date.now()}`,
+        title: data.layout.title?.text || "Generated Visualization",
+        description: "Visualization generated from your query",
+        plotlyData: data.data,
+        plotlyLayout: data.layout,
+        plotlyConfig: { responsive: true },
+      });
+    } else if (Array.isArray(data)) {
+      allVizs.push(...data);
+    }
+
+    return allVizs;
   };
 
   const generateSQLReport = async (question?: string) => {
@@ -483,7 +633,82 @@ export default function UploadPage() {
       throw new Error(errorData.detail || "Failed to generate report");
     }
 
-    return await response.json();
+    const data = await response.json();
+
+    let combinedHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Database Analysis Report</title>
+<style>
+body {font-family: Arial, sans-serif; margin: 2rem; line-height: 1.6; color: #333;}
+h1, h2, h3 {color: #2c3e50;}
+table {width: 100%; border-collapse: collapse; margin-bottom: 1rem;}
+th, td {border: 1px solid #ddd; padding: 0.75rem; text-align: left;}
+th {background-color: #f2f2f2;}
+.table-section {margin-bottom: 4rem; page-break-after: always; border: 2px solid #e0e0e0; padding: 2rem; border-radius: 8px; background: #fafafa;}
+.table-header {background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; margin: -2rem -2rem 2rem -2rem; border-radius: 6px 6px 0 0;}
+.table-header h2 {color: white; margin: 0; font-size: 1.5rem;}
+.metadata {background: #f0f4f8; padding: 1rem; border-left: 4px solid #3498db; margin-bottom: 1.5rem; font-size: 0.9rem;}
+.metadata strong {color: #2c3e50;}
+footer {text-align: center; margin-top: 3rem; padding: 2rem; background: #f8f9fa; border-top: 2px solid #dee2e6;}
+@media print {
+  .table-section {page-break-after: always;}
+  body {margin: 0;}
+}
+</style>
+</head>
+<body>
+<h1 style="text-align: center; color: #2c3e50; margin-bottom: 0.5rem;">Comprehensive Database Analysis Report</h1>
+<p style="text-align: center; color: #7f8c8d; margin-bottom: 2rem;">Generated on: ${new Date().toLocaleString()}</p>
+<hr style="border: 0; height: 2px; background: linear-gradient(90deg, transparent, #3498db, transparent); margin-bottom: 3rem;">
+`;
+
+    let tableCount = 0;
+    Object.entries(data).forEach(([tableName, tableData]: [string, any]) => {
+      if (tableData.htmlMarkdown) {
+        tableCount++;
+        let bodyContent = tableData.htmlMarkdown;
+        const bodyMatch = bodyContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        if (bodyMatch) {
+          bodyContent = bodyMatch[1];
+        }
+
+        bodyContent = bodyContent.replace(/<h1[^>]*>.*?<\/h1>/gi, "");
+
+        const metadata = tableData.metadata || {};
+        const metadataHtml = `
+<div class="metadata">
+  <strong>Table:</strong> ${tableName} | 
+  <strong>Rows Analyzed:</strong> ${metadata.rowsAnalyzed || "N/A"} | 
+  <strong>Generated:</strong> ${
+    metadata.generatedAt
+      ? new Date(metadata.generatedAt).toLocaleString()
+      : "N/A"
+  }
+</div>`;
+
+        combinedHtml += `
+<div class="table-section">
+<div class="table-header">
+<h2>📊 Table ${tableCount}: ${tableName}</h2>
+</div>
+${metadataHtml}
+${bodyContent}
+</div>
+`;
+      }
+    });
+
+    combinedHtml += `
+<footer>
+<p style="margin: 0; font-weight: bold; color: #2c3e50;">Database Analysis Report</p>
+<p style="margin: 0.5rem 0 0 0; color: #7f8c8d;">Total Tables Analyzed: ${tableCount}</p>
+</footer>
+</body>
+</html>`;
+
+    return combinedHtml;
   };
 
   const sendMessage = async () => {
@@ -497,10 +722,11 @@ export default function UploadPage() {
     try {
       const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
       const isReportRequest = /report|summary|document|pdf/i.test(userMessage);
+      const isVisualizationRequest =
+        /visuali[sz]ation|chart|graph|plot|show.*data/i.test(userMessage);
 
       if (isSQLSource) {
         if (isReportRequest) {
-          // Get selected visualizations context
           const selectedVizContext = visualizations
             .filter((viz) => selectedVizIds.has(viz.id))
             .map((viz) => ({
@@ -511,7 +737,7 @@ export default function UploadPage() {
               plotlyLayout: viz.plotlyLayout,
             }));
 
-          const reportData = await generateSQLReport(userMessage);
+          const reportHtml = await generateSQLReport(userMessage);
 
           setMessages((prev) => [
             ...prev,
@@ -522,33 +748,68 @@ export default function UploadPage() {
                   ? `Including ${selectedVizContext.length} selected visualization(s).`
                   : ""
               } Click below to download.`,
-              html: reportData,
+              html: reportHtml,
             },
           ]);
+        } else if (isVisualizationRequest) {
+          const vizArray = await requestSQLVisualizations(userMessage);
+
+          if (vizArray.length > 0) {
+            setVisualizations((prev) => [...prev, ...vizArray]);
+
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `✓ Generated ${vizArray.length} visualization${
+                  vizArray.length !== 1 ? "s" : ""
+                } from your query!`,
+              },
+            ]);
+            setActiveTab("charts");
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content:
+                  "⚠ No visualizations could be generated from your query. Try rephrasing or asking for specific chart types.",
+              },
+            ]);
+          }
         } else {
+          // Regular SQL query
           const data = await fetchSQLData(userMessage);
 
-          // If data contains table results, update the preview
-          if (data.rows && data.columns) {
-            setSqlTableData(data.rows);
-            setSqlColumns(data.columns);
+          // Update the table preview with latest results
+          if (
+            data.results &&
+            Array.isArray(data.results) &&
+            data.results.length > 0
+          ) {
+            const columns = Object.keys(data.results[0]);
+            setSqlTableData(data.results);
+            setSqlColumns(columns);
             setActiveTab("table");
           }
 
+          // Add message with SQL result data
           setMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              content:
-                data.answer ||
-                `✓ Query executed successfully! ${
-                  data.rows?.length || 0
-                } rows returned.`,
+              content: `✓ Query executed successfully! ${
+                data.results?.length || 0
+              } row${data.results?.length !== 1 ? "s" : ""} returned.`,
+              sqlData: {
+                question: data.question || userMessage,
+                generated_sql: data.generated_sql || "",
+                results: data.results || [],
+              },
             },
           ]);
         }
       } else if (dataset) {
-        // Regular dataset handling
         if (isReportRequest) {
           const selectedVizContext = visualizations
             .filter((viz) => selectedVizIds.has(viz.id))
@@ -628,8 +889,18 @@ export default function UploadPage() {
       const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
 
       if (isSQLSource) {
-        const data = await requestSQLVisualizations();
-        setVisualizations(data.visualizations || data || []);
+        const vizArray = await requestSQLVisualizations();
+        setVisualizations(vizArray);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `✓ Generated ${vizArray.length} visualization${
+              vizArray.length !== 1 ? "s" : ""
+            } across all database tables!`,
+          },
+        ]);
       } else {
         const response = await fetch("/api/llm/visualize", {
           method: "POST",
@@ -641,11 +912,25 @@ export default function UploadPage() {
 
         const data = await response.json();
         setVisualizations(data.visualizations || []);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `✓ Generated ${
+              data.visualizations?.length || 0
+            } visualization${data.visualizations?.length !== 1 ? "s" : ""}!`,
+          },
+        ]);
       }
 
       setActiveTab("charts");
     } catch (err: any) {
       setError(err.message);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `✗ Error: ${err.message}` },
+      ]);
     } finally {
       setVizLoading(false);
     }
@@ -673,7 +958,6 @@ export default function UploadPage() {
       const baseFilename = `report-${timestamp}`;
 
       if (format === "html") {
-        // Download as HTML
         const blob = new Blob([html], { type: "text/html" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -684,11 +968,8 @@ export default function UploadPage() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
-        // Dynamically import html2pdf only on client side
         const html2pdf = (await import("html2pdf.js")).default;
 
-        // Download as PDF with chart rendering
-        // Create a hidden iframe to render the HTML with charts
         const iframe = document.createElement("iframe");
         iframe.style.position = "fixed";
         iframe.style.top = "-10000px";
@@ -697,7 +978,6 @@ export default function UploadPage() {
         iframe.style.height = "1000px";
         document.body.appendChild(iframe);
 
-        // Write HTML to iframe
         const iframeDoc =
           iframe.contentDocument || iframe.contentWindow?.document;
         if (!iframeDoc) throw new Error("Failed to access iframe document");
@@ -706,7 +986,6 @@ export default function UploadPage() {
         iframeDoc.write(html);
         iframeDoc.close();
 
-        // Wait for Chart.js to load and render all charts
         await new Promise((resolve) => {
           const checkCharts = () => {
             const chartScripts = iframeDoc.querySelectorAll("script");
@@ -719,7 +998,6 @@ export default function UploadPage() {
             });
 
             if (chartJsLoaded) {
-              // Wait additional time for charts to render
               setTimeout(resolve, 3000);
             } else {
               setTimeout(resolve, 1000);
@@ -733,7 +1011,6 @@ export default function UploadPage() {
           }
         });
 
-        // Configure PDF options
         const opt = {
           margin: [10, 10, 10, 10] as [number, number, number, number],
           filename: `${baseFilename}.pdf`,
@@ -758,10 +1035,8 @@ export default function UploadPage() {
           },
         };
 
-        // Generate PDF from iframe content
         await html2pdf().set(opt).from(iframeDoc.body).save();
 
-        // Clean up iframe
         document.body.removeChild(iframe);
       }
 
@@ -790,8 +1065,7 @@ export default function UploadPage() {
     const props = { onDataLoaded: handleDataLoaded, onError: handleError };
     const sqlprops = { onUriLoaded: handleUriLoaded, onError: handleError };
 
-    // Check if SQL source has existing connection
-    const isSQLSource = ["postgres", "mysql", "sqlite"].includes(source);
+    const isSQLSource = ["postgresql", "mysql", "sqlite"].includes(source);
 
     const existingConnection =
       isSQLSource && userInfo
@@ -809,12 +1083,10 @@ export default function UploadPage() {
           })()
         : null;
 
-    // If SQL source has existing connection, don't show input (chat interface will show)
     if (isSQLSource && existingConnection) {
       return null;
     }
 
-    // Show input for sources without existing connections
     switch (source) {
       case "csv":
         return <CsvHandler {...props} />;
@@ -1021,9 +1293,14 @@ export default function UploadPage() {
                         onClick={requestVisualizations}
                         disabled={vizLoading}
                       >
-                        {vizLoading
-                          ? "Generating..."
-                          : "Generate Visualizations"}
+                        {vizLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          "Generate Visualizations"
+                        )}
                       </Button>
                       {selectedVizIds.size > 0 && (
                         <Badge variant="secondary">
@@ -1297,6 +1574,13 @@ export default function UploadPage() {
                       <p className="text-sm whitespace-pre-wrap">
                         {msg.content}
                       </p>
+
+                      {/* SQL Result Display */}
+                      {msg.sqlData && (
+                        <SQLResultDisplay sqlData={msg.sqlData} />
+                      )}
+
+                      {/* Report Download Buttons */}
                       {msg.html && (
                         <div className="flex gap-2 mt-2">
                           <Button
@@ -1305,7 +1589,11 @@ export default function UploadPage() {
                             onClick={() => downloadReport(msg.html!, "pdf")}
                             disabled={downloadLoading}
                           >
-                            <Download className="h-3 w-3 mr-1" />
+                            {downloadLoading ? (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            ) : (
+                              <Download className="h-3 w-3 mr-1" />
+                            )}
                             {downloadLoading ? "Generating..." : "Download PDF"}
                           </Button>
                           <Button
@@ -1322,7 +1610,8 @@ export default function UploadPage() {
                     </div>
                   ))}
                   {loading && (
-                    <div className="mb-3 bg-muted/30 rounded-lg p-3 text-sm">
+                    <div className="mb-3 bg-muted/30 rounded-lg p-3 text-sm flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       {isSQLSource
                         ? "Querying database..."
                         : "Analyzing your data..."}
@@ -1334,7 +1623,9 @@ export default function UploadPage() {
                   <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+                    onKeyPress={(e) =>
+                      e.key === "Enter" && !loading && sendMessage()
+                    }
                     placeholder={
                       isSQLSource
                         ? "Ask a question about your database..."
@@ -1343,7 +1634,11 @@ export default function UploadPage() {
                     disabled={loading}
                   />
                   <Button onClick={sendMessage} disabled={loading} size="icon">
-                    <Send className="h-4 w-4" />
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
