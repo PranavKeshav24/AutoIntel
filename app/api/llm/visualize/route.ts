@@ -18,39 +18,79 @@ export async function POST(request: NextRequest) {
 
     const sampleData = dataset.schema.sampleRows || dataset.rows.slice(0, 10);
 
-    const systemPrompt = `You are a data visualization expert. Analyze this dataset and suggest 4 relevant visualizations.
+    const systemPrompt = `You are a data visualization expert creating insightful charts using Vega-Lite.
 
-Dataset Schema:
+The dataset has been provided as JSON and may be:
+- Flat/tabular (CSV, Excel, SQL-like), or
+- Nested/document-oriented (MongoDB, API JSON)
+
+Dataset Schema (field names and inferred data types):
 ${schemaSummary}
 
-Total rows: ${dataset.schema.rowCount}
+Total Records: ${dataset.schema.rowCount}
 
-Sample data:
+Sample Data (use this to understand structure and infer field types):
 ${JSON.stringify(sampleData, null, 2)}
 
-Create 4 diverse visualizations (bar, line, pie, scatter, etc.) that best represent the data patterns.
+Your task is to create **2-4 meaningful visualizations** that reveal insights from the data.
 
-Respond with a JSON array of visualization specs:
+Visualization Guidelines:
+- **Use ONLY fields that exist in the schema/sample data** — do not invent fields
+- If a field is nested (e.g., {"user": {"name": "Sam"}}), you may reference it as "user.name"
+- Choose visualizations appropriate for the data type:
+  * Categorical data → bar charts, pie charts, grouped bars
+  * Numeric data → histograms, line charts, scatter plots, area charts
+  * Time-series → line or area charts with temporal encoding
+  * Comparisons → bar charts, grouped/stacked bars
+  * Distributions → histograms, box plots
+  * Relationships → scatter plots, heatmaps
+- Prioritize charts that show trends, patterns, distributions, or key comparisons
+- Each chart should answer a specific analytical question
+
+Technical Requirements:
+- Use valid **Vega-Lite v5** specifications
+- Each visualization MUST include actual data in "data": { "values": [...] }
+- Use 5-20 representative sample records per chart
+- Use correct encoding types: "nominal", "ordinal", "quantitative", "temporal"
+- Include clear axis labels, descriptive titles, and enable tooltips
+- Set reasonable dimensions (width: 400-600, height: 300-400)
+- Apply aggregation (count, sum, average, etc.) only when it adds analytical value
+- Do NOT use empty data arrays or external data URLs
+
+Respond with a **JSON array** formatted exactly as:
 [
   {
-    "id": "viz-1",
-    "title": "Chart Title",
-    "description": "What this chart shows",
+    "id": "unique-chart-id",
+    "title": "Clear, concise chart title",
+    "description": "Brief explanation of what insight this chart reveals",
     "vegaLiteSpec": {
       "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-      "data": { "values": [] },
-      "mark": "bar",
+      "description": "Chart description",
+      "data": { "values": [ /* 5-20 actual data records */ ] },
+      "mark": { "type": "bar", "tooltip": true },
       "encoding": {
-        "x": {"field": "fieldName", "type": "nominal"},
-        "y": {"field": "fieldName", "type": "quantitative"}
+        "x": { 
+          "field": "actualFieldName", 
+          "type": "nominal",
+          "axis": { "title": "Descriptive X Label" }
+        },
+        "y": { 
+          "field": "actualFieldName", 
+          "type": "quantitative",
+          "axis": { "title": "Descriptive Y Label" }
+        }
       },
-      "width": 400,
-      "height": 300
+      "width": 500,
+      "height": 350
     }
   }
 ]
 
-IMPORTANT: Include actual data samples in the "values" array, not empty arrays.`;
+CRITICAL OUTPUT REQUIREMENTS:
+- Return **raw JSON array only** — no preamble, explanation, or commentary
+- Do NOT wrap in markdown code blocks (\`\`\`json) or backticks
+- Do NOT include any text outside the JSON structure
+- Ensure the JSON is valid and parseable`;
 
     const messages = [
       { role: "system", content: systemPrompt },

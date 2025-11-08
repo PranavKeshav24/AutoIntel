@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { MongoClient, Db, MongoServerError } from "mongodb";
 import { z } from "zod";
-import { getLing1TLLM } from "@/lib/llm";
 import { createMongoPrompt } from "@/lib/mongoLangChain";
+import { getLing1TLLM } from "@/app/api/llm";
 
-// LLM wrapper for MongoDB query generation
 
-// --- Zod Schemas for Runtime Validation ---
 const MongoOperationSchema = z.enum([
   "find",
   "aggregate",
@@ -193,6 +191,21 @@ function parseGeneratedQuery(queryStr: string): MongoQuery {
 
   return mongoQuery;
 }
+async function inferSchema(db: Db, collectionName: string, sampleSize = 5) {
+  const sample = await db.collection(collectionName).find({}).limit(sampleSize).toArray();
+  const schema: Record<string, string> = {};
+
+  if (!sample || sample.length === 0) return {};
+
+  for (const doc of sample) {
+    Object.keys(doc).forEach(key => {
+      schema[key] = typeof doc[key];
+    });
+  }
+
+  return schema;
+}
+
 
 // --- Query Execution ---
 async function executeMongoOperation(
@@ -233,6 +246,7 @@ async function executeMongoOperation(
           .find(query.filter || {}, safeOptions)
           .limit(MAX_RESULT_SIZE);
         result = await cursor.toArray();
+        console.log("[MongoDB Result Preview]", JSON.stringify(result.slice(0, 3), null, 2));
         affectedDocuments = result.length;
         break;
       }
@@ -334,15 +348,31 @@ async function executeMongoOperation(
 
   const executionTimeMs = Date.now() - startTime;
 
-  return {
-    result,
-    metadata: {
-      executionTimeMs,
-      operation,
-      collection,
-      affectedDocuments,
-    },
-  };
+
+function normalizeMongoDocs(docs: any[]) {
+  return docs.map(doc => {
+    const newDoc = { ...doc };
+    if (newDoc._id) newDoc._id = newDoc._id.toString(); // Converts BSON ObjectId → string
+    return newDoc;
+  });
+}
+
+// ---- inside executeMongoOperation return block ----
+
+const normalized =
+  Array.isArray(result) ? normalizeMongoDocs(result) : result;
+
+return {
+  result: normalized,
+  metadata: {
+    executionTimeMs,
+    operation,
+    collection,
+    affectedDocuments,
+  },
+};
+
+
 }
 
 // --- Connection Management ---
@@ -413,7 +443,21 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     }
 
     const body = validationResult.data;
-    const { schema, userRequest, connectionString, dryRun } = body;
+let { schema, userRequest, connectionString, dryRun } = body;
+
+client = await connectWithRetry(connectionString);
+const dbInstance = client.db(); // ✅ rename variable to avoid conflict
+
+// Infer schema automatically if none provided
+if (!schema || schema.trim() === "" || schema.trim() === "{}") {
+  const collections = await dbInstance.listCollections().toArray();
+  const inferredSchemas: any = {};
+  for (const col of collections) {
+    inferredSchemas[col.name] = await inferSchema(dbInstance, col.name);
+  }
+  schema = JSON.stringify(inferredSchemas, null, 2);
+}
+
 
     // Sanitize inputs
     const sanitizedSchema = sanitizeInput(schema);
@@ -456,7 +500,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     const db = client.db();
 
     // Execute query
-    const { result, metadata } = await executeMongoOperation(db, mongoQuery, dryRun);
+const { result, metadata } = await executeMongoOperation(dbInstance, mongoQuery, dryRun);
 
     const totalTimeMs = Date.now() - requestStartTime;
 
