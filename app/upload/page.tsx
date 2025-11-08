@@ -372,6 +372,9 @@ export default function UploadPage() {
         userMessage
       );
 
+      if (isStoryRequest) {
+        await generateStory(userMessage);
+      }
       // ===== TEXT/PDF SOURCE HANDLING =====
       if (isTextSource && dataset?.id) {
         // Verify the dataset is indexed before attempting analysis
@@ -558,9 +561,6 @@ export default function UploadPage() {
 
       // ===== SQL SOURCE HANDLING =====
       if (isSQLSource) {
-      if (isStoryRequest) {
-        await generateStory(userMessage);
-      } else if (isSQLSource) {
         if (isReportRequest) {
           const reportHtml = await sqlOps.generateSQLReport(userMessage);
 
@@ -620,6 +620,7 @@ export default function UploadPage() {
           ]);
         }
       }
+
       // ===== CSV/JSON/EXCEL SOURCE HANDLING =====
       else if (dataset) {
         if (isReportRequest) {

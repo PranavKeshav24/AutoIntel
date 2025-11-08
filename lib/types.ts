@@ -328,6 +328,7 @@ export interface TextDataSetMeta {
   indexed: boolean;
   indexedAt: string;
   totalLines: number;
+}
 // TTS Provider types (NEW)
 export type TTSProvider = "elevenlabs" | "huggingface" | "google" | "browser";
 
