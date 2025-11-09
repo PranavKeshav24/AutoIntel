@@ -56,29 +56,109 @@ export async function POST(
 
       case "mongodb": {
         sourceName = "MongoDB Database";
-        // ✅ Ensure the correct export name is used
-        const { connectToMongoDB } = await import("@/lib/mongodb");
+        const { MongoClient } = await import("mongodb");
+        
+        // Create a new connection for this request
+        const client = new MongoClient(connectionString, {
+          serverSelectionTimeoutMS: 10000,
+          connectTimeoutMS: 10000,
+        });
+        
+        let clientConnected = false;
+        
+        try {
+          // Connect to MongoDB
+          await client.connect();
+          clientConnected = true;
+          const db = client.db();
 
-        // ✅ Connect to MongoDB
-        const { db } = await connectToMongoDB(connectionString);
+          // ✅ Fetch sample documents
+          const collections = await db.listCollections().toArray();
 
-        // ✅ Fetch sample documents
-        const collections = await db.listCollections().toArray();
-        const rows: any[] = [];
+          if (collections.length === 0) {
+            // Return empty dataset if no collections
+            const emptyDataset = DataProcessor.createDataSet(
+              [],
+              "mongodb",
+              sourceName
+            );
+            return NextResponse.json({ dataset: emptyDataset });
+          }
 
-        for (const col of collections.slice(0, 3)) {
-          const collection = db.collection(col.name);
-          const docs = await collection.find({}).limit(5).toArray();
-          rows.push({ collection: col.name, data: docs });
+          // Flatten all documents from collections into a single array
+          const allRows: any[] = [];
+
+          for (const col of collections.slice(0, 3)) {
+            try {
+              const collection = db.collection(col.name);
+              const docs = await collection.find({}).limit(5).toArray();
+              
+              // Convert ObjectId to string and flatten documents
+              const normalizedDocs = docs.map((doc: any) => {
+                const normalized: any = { ...doc };
+                // Convert _id ObjectId to string
+                if (normalized._id && typeof normalized._id === "object" && normalized._id.toString) {
+                  normalized._id = normalized._id.toString();
+                }
+                // Add collection name to each document
+                normalized._collection = col.name;
+                return normalized;
+              });
+              
+              allRows.push(...normalizedDocs);
+            } catch (colError: any) {
+              console.warn(`Error fetching from collection ${col.name}:`, colError.message);
+              // Continue with other collections
+            }
+          }
+
+          if (allRows.length === 0) {
+            // Return empty dataset if no documents found
+            const emptyDataset = DataProcessor.createDataSet(
+              [],
+              "mongodb",
+              sourceName
+            );
+            return NextResponse.json({ dataset: emptyDataset });
+          }
+
+          // ✅ Process and return dataset
+          const dataset = DataProcessor.createDataSet(
+            allRows,
+            "mongodb",
+            sourceName
+          );
+          
+          return NextResponse.json({ dataset });
+        } catch (connectionError: any) {
+          console.error("MongoDB connection error:", connectionError);
+          
+          // Provide more detailed error messages
+          let errorMessage = connectionError?.message || "Database connection failed";
+          
+          if (connectionError?.code === "ENOTFOUND" || connectionError?.code === "ECONNREFUSED") {
+            errorMessage = "Cannot reach MongoDB server. Please check your connection string and network.";
+          } else if (connectionError?.code === "EAUTH") {
+            errorMessage = "Authentication failed. Please check your username and password.";
+          } else if (connectionError?.message?.includes("timeout")) {
+            errorMessage = "Connection timeout. Please check your connection string and network.";
+          }
+          
+          return NextResponse.json(
+            { 
+              error: errorMessage,
+              details: process.env.NODE_ENV === "development" ? connectionError?.stack : undefined
+            },
+            { status: 500 }
+          );
+        } finally {
+          // Always close the connection if it was opened
+          if (clientConnected) {
+            await client.close().catch((err) => {
+              console.error("Error closing MongoDB connection:", err);
+            });
+          }
         }
-
-        // ✅ Process and return dataset
-        const dataset = DataProcessor.createDataSet(
-          rows,
-          "mongodb" as any, // casting for now until DataProcessor type is updated
-          sourceName
-        );
-        return NextResponse.json({ dataset });
       }
 
       default:
