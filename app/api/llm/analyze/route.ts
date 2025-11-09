@@ -21,39 +21,33 @@ export async function POST(request: NextRequest) {
 
     const sampleData = dataset.schema.sampleRows || dataset.rows.slice(0, 5);
 
-    const systemPrompt = `You are a data analysis assistant.
-The dataset is provided as JSON data and may have either a flat tabular structure (like CSV/Excel/SQL) or a nested document structure (like MongoDB).
+    const systemPrompt = `You are a data analysis assistant. You have access to a dataset with the following schema:
 
-Dataset schema (fields and their inferred data types):
 ${schemaSummary}
 
-Total records: ${dataset.schema.rowCount}
+Total rows: ${dataset.schema.rowCount}
 
 Sample data:
 ${JSON.stringify(sampleData, null, 2)}
 
 Your task is to:
-1. Determine whether the dataset is flat (row/column) or nested (document-oriented)
-2. Identify key fields and their significance, then summarize meaningful insights
-3. Answer the user's question based on the available data
-4. Suggest visualizations using Vega-Lite when helpful (prioritize numeric trends, distributions, or categorical comparisons)
-5. Provide 3 relevant follow-up questions to help explore the data further
+1. Answer the user's query based on the data
+2. Suggest relevant visualizations using Vega-Lite specification
+3. Provide follow-up questions
 
-Respond in **JSON ONLY**, formatted exactly as follows:
+Respond in JSON format:
 {
-  "answer": "Your analysis here.",
+  "answer": "Your analysis here",
   "visualizations": [
     {
       "id": "unique-id",
       "title": "Chart title",
-      "description": "What insight the chart provides",
+      "description": "Brief description",
       "vegaLiteSpec": { /* valid Vega-Lite spec */ }
     }
   ],
-  "followUps": ["Question 1?", "Question 2?", "Question 3?"]
-}
-
-CRITICAL: Return ONLY the raw JSON object. No markdown code blocks (no \`\`\`json), no backticks, no preamble, no text outside the JSON structure.`;
+  "followUps": ["Question 1?", "Question 2?"]
+}`;
 
     const messages = [
       { role: "system", content: systemPrompt },
