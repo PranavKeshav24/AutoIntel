@@ -6,6 +6,7 @@ import {
   DataSchema,
   Primitive,
   DataCleaningOptions,
+  DataSourceType,
 } from "@/lib/types";
 
 export class DataProcessor {
@@ -276,7 +277,7 @@ export class DataProcessor {
    */
   static createDataSet(
     rawData: any[],
-    sourceKind: "csv" | "excel" | "sheets",
+    sourceKind: DataSourceType,
     sourceName?: string
   ): DataSet {
     const normalized = this.normalizeRows(rawData);

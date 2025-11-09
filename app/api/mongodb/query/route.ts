@@ -3,6 +3,7 @@ import { MongoClient, Db, MongoServerError } from "mongodb";
 import { z } from "zod";
 import { createMongoPrompt } from "@/lib/mongoLangChain";
 import { getLing1TLLM } from "@/app/api/llm";
+import { mongoToDataset } from "@/lib/mongoToDataset";
 
 
 const MongoOperationSchema = z.enum([
@@ -348,31 +349,46 @@ async function executeMongoOperation(
 
   const executionTimeMs = Date.now() - startTime;
 
+  // Normalize MongoDB documents
+  const normalized = Array.isArray(result) ? normalizeMongoDocs(result) : result;
 
+  return {
+    result: normalized,
+    metadata: {
+      executionTimeMs,
+      operation,
+      collection,
+      affectedDocuments,
+    },
+  };
+}
+
+// Helper function to normalize MongoDB documents
 function normalizeMongoDocs(docs: any[]) {
   return docs.map(doc => {
     const newDoc = { ...doc };
-    if (newDoc._id) newDoc._id = newDoc._id.toString(); // Converts BSON ObjectId → string
+
+    // Convert ObjectId → string
+    if (newDoc._id && typeof newDoc._id === "object" && newDoc._id.toString) {
+      newDoc._id = newDoc._id.toString();
+    }
+
+    // Fix fields incorrectly stored as JSON strings
+    for (const key in newDoc) {
+      if (
+        typeof newDoc[key] === "string" &&
+        (newDoc[key].trim().startsWith("{") || newDoc[key].trim().startsWith("["))
+      ) {
+        try {
+          newDoc[key] = JSON.parse(newDoc[key]);
+        } catch {
+          // ignore if not valid json
+        }
+      }
+    }
+
     return newDoc;
   });
-}
-
-// ---- inside executeMongoOperation return block ----
-
-const normalized =
-  Array.isArray(result) ? normalizeMongoDocs(result) : result;
-
-return {
-  result: normalized,
-  metadata: {
-    executionTimeMs,
-    operation,
-    collection,
-    affectedDocuments,
-  },
-};
-
-
 }
 
 // --- Connection Management ---
@@ -443,21 +459,21 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     }
 
     const body = validationResult.data;
-let { schema, userRequest, connectionString, dryRun } = body;
+    let { schema, userRequest, connectionString, dryRun } = body;
 
-client = await connectWithRetry(connectionString);
-const dbInstance = client.db(); // ✅ rename variable to avoid conflict
+    // Connect to MongoDB with retry
+    client = await connectWithRetry(connectionString);
+    const dbInstance = client.db();
 
-// Infer schema automatically if none provided
-if (!schema || schema.trim() === "" || schema.trim() === "{}") {
-  const collections = await dbInstance.listCollections().toArray();
-  const inferredSchemas: any = {};
-  for (const col of collections) {
-    inferredSchemas[col.name] = await inferSchema(dbInstance, col.name);
-  }
-  schema = JSON.stringify(inferredSchemas, null, 2);
-}
-
+    // Infer schema automatically if none provided
+    if (!schema || schema.trim() === "" || schema.trim() === "{}") {
+      const collections = await dbInstance.listCollections().toArray();
+      const inferredSchemas: any = {};
+      for (const col of collections) {
+        inferredSchemas[col.name] = await inferSchema(dbInstance, col.name);
+      }
+      schema = JSON.stringify(inferredSchemas, null, 2);
+    }
 
     // Sanitize inputs
     const sanitizedSchema = sanitizeInput(schema);
@@ -494,13 +510,10 @@ if (!schema || schema.trim() === "" || schema.trim() === "{}") {
       operation: mongoQuery.operation,
       collection: mongoQuery.collection,
     });
-
-    // Connect to MongoDB with retry
-    client = await connectWithRetry(connectionString);
-    const db = client.db();
+  
 
     // Execute query
-const { result, metadata } = await executeMongoOperation(dbInstance, mongoQuery, dryRun);
+    const { result, metadata } = await executeMongoOperation(dbInstance, mongoQuery, dryRun);
 
     const totalTimeMs = Date.now() - requestStartTime;
 
@@ -514,9 +527,17 @@ const { result, metadata } = await executeMongoOperation(dbInstance, mongoQuery,
         `(${totalTimeMs}ms, affected: ${metadata.affectedDocuments})`
     );
 
+    // Convert MongoDB documents → dataset format for analysis tools
+    // Only convert array results (find, aggregate) to dataset format
+    // Other operations (count, insert, update, delete) return metadata objects
+    const dataset = Array.isArray(result) && result.length > 0 
+      ? mongoToDataset(result) 
+      : null;
+
     return NextResponse.json({
       success: true,
-      result,
+      result, // Always include the raw result
+      dataset, // Dataset format for analyze/report/visualize (only for array results)
       generatedQuery: mongoQuery,
       metadata: {
         ...metadata,
@@ -524,6 +545,8 @@ const { result, metadata } = await executeMongoOperation(dbInstance, mongoQuery,
         cached: false,
       },
     });
+
+
   } catch (err: any) {
     const totalTimeMs = Date.now() - requestStartTime;
 
