@@ -17,6 +17,10 @@ import {
 } from "lucide-react";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CohereEmbeddings } from "@langchain/cohere";
+import { PineconeStore } from "@langchain/pinecone";
+import { Pinecone as PineconeClient } from "@pinecone-database/pinecone";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 
 // JSON Handler
 export function JsonHandler({ onDataLoaded, onError }: any) {
@@ -84,7 +88,18 @@ export function JsonHandler({ onDataLoaded, onError }: any) {
 // Text/PDF Handler
 export function TextPdfHandler({ onDataLoaded, onError, type }: any) {
   const [processing, setProcessing] = useState(false);
+  const embeddings = new CohereEmbeddings({
+    model: "embed-english-v3.0",
+  });
+  const pinecone = new PineconeClient({
+    apiKey: process.env.PINECONE_API_KEY,
+  });
+  const pineconeIndex = pinecone.Index("your-index-name");
 
+  const vectorStore = new PineconeStore(embeddings, {
+    pineconeIndex,
+    maxConcurrency: 5,
+  });
   const handleFile = async (file: File) => {
     setProcessing(true);
     try {
@@ -95,6 +110,13 @@ export function TextPdfHandler({ onDataLoaded, onError, type }: any) {
         line_number: i + 1,
         content: line.trim(),
       }));
+      const splitter = new RecursiveCharacterTextSplitter({
+        chunkSize: 1000,
+        chunkOverlap: 200,
+      });
+      const allSplits = await splitter.splitDocuments(text);
+      console.log(`Split blog post into ${allSplits.length} sub-documents.`);
+      await vectorStore.addDocuments(allSplits);
 
       const dataset = DataProcessor.createDataSet(rows, type, file.name);
       onDataLoaded(dataset);
