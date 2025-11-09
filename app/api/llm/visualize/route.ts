@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     const sampleData = dataset.schema.sampleRows || dataset.rows.slice(0, 10);
 
-    const systemPrompt = `You are a data visualization expert. Analyze this dataset and suggest 4 relevant visualizations.
+    const systemPrompt = `You are a data visualization expert. Analyze this dataset and suggest 6-9 relevant visualizations.
 
 Dataset Schema:
 ${schemaSummary}
@@ -28,29 +28,40 @@ Total rows: ${dataset.schema.rowCount}
 Sample data:
 ${JSON.stringify(sampleData, null, 2)}
 
-Create 4 diverse visualizations (bar, line, pie, scatter, etc.) that best represent the data patterns.
+Create 6-10 diverse visualizations (bar, line, scatter, pie, box, histogram, etc.) that best represent the data patterns.
 
-Respond with a JSON array of visualization specs:
-[
-  {
-    "id": "viz-1",
-    "title": "Chart Title",
-    "description": "What this chart shows",
-    "vegaLiteSpec": {
-      "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-      "data": { "values": [] },
-      "mark": "bar",
-      "encoding": {
-        "x": {"field": "fieldName", "type": "nominal"},
-        "y": {"field": "fieldName", "type": "quantitative"}
-      },
-      "width": 400,
-      "height": 300
+Respond with a JSON array of visualization specs. Each spec should have:
+{
+  "id": "unique-id",
+  "title": "Chart Title",
+  "description": "What this chart shows",
+  "plotlyData": [
+    {
+      "x": [...],
+      "y": [...],
+      "type": "bar|scatter|line|pie|box|histogram|heatmap",
+      "mode": "lines|markers|lines+markers",
+      "name": "Series Name",
+      "marker": { "color": "blue" }
     }
+  ],
+  "plotlyLayout": {
+    "xaxis": { "title": "X Axis Label" },
+    "yaxis": { "title": "Y Axis Label" },
+    "title": "Chart Title"
   }
-]
+}
 
-IMPORTANT: Include actual data samples in the "values" array, not empty arrays.`;
+IMPORTANT: 
+- Include actual data values in the plotlyData arrays, not empty arrays
+- Use the actual column names from the schema
+- Choose appropriate chart types for the data
+- For categorical data, use bar or pie charts
+- For time series, use line charts
+- For distributions, use histograms or box plots
+- Keep the data arrays reasonable (sample if needed)
+
+Return ONLY a JSON array, no markdown formatting.`;
 
     const messages = [
       { role: "system", content: systemPrompt },

@@ -1,4 +1,10 @@
-
+/**
+ * MongoDB query generation prompt template.
+ * 
+ * This template is used to convert natural language requests into MongoDB queries.
+ * It supports both LangChain PromptTemplate (via {{schema}} and {{input}} variables)
+ * and standalone usage (via buildMongoPrompt function).
+ */
 export const mongoPromptTemplate = `
 Convert natural language to MongoDB queries (Node.js driver syntax).
 
@@ -10,7 +16,7 @@ USER REQUEST:
 
 OUTPUT (JSON only, no markdown/text):
 {
-  "operation": "find|aggregate|insertOne|updateOne|deleteOne|countDocuments",
+  "operation": "find|aggregate|insertOne|insertMany|updateOne|updateMany|deleteOne|deleteMany|countDocuments",
   "collection": "string",
   "query": {}
 }
@@ -22,11 +28,13 @@ RULES:
 4. Use {{CURRENT_DATE}} for "today", {{USER_TZ}} for timezone
 5. Nested fields: use dot notation ("address.city")
 6. Arrays: match values directly or use $elemMatch for objects
+7. Always validate collection names against schema
 
 ERRORS (return these if applicable):
 {"error": "Field 'xyz' not in schema"}
 {"error": "Cannot delete without filter"}
 {"error": "Ambiguous: specify collection"}
+{"error": "Collection 'xyz' not in schema"}
 
 PATTERNS:
 
@@ -56,20 +64,46 @@ insertOne:
   "document": {"name": "John", "email": "john@test.com"}
 }}
 
+insertMany:
+{ "operation": "insertMany", "collection": "users", "query": {
+  "documents": [{"name": "John"}, {"name": "Jane"}]
+}}
+
+updateOne:
+{ "operation": "updateOne", "collection": "products", "query": {
+  "filter": {"_id": "product123"},
+  "update": {"$set": {"status": "active"}}
+}}
+
 updateMany:
 { "operation": "updateMany", "collection": "products", "query": {
   "filter": {"stock": {"$lt": 10}},
   "update": {"$set": {"status": "low"}}
 }}
 
+deleteOne:
+{ "operation": "deleteOne", "collection": "users", "query": {
+  "filter": {"_id": "user123"}
+}}
+
+deleteMany:
+{ "operation": "deleteMany", "collection": "users", "query": {
+  "filter": {"status": "inactive"}
+}}
+
+countDocuments:
+{ "operation": "countDocuments", "collection": "users", "query": {
+  "filter": {"age": {"$gte": 18}}
+}}
+
 OPERATORS:
 Compare: $gt $gte $lt $lte $eq $ne $in $nin
-Logic: $and $or $not
+Logic: $and $or $not $nor
 Element: $exists $type
 Array: $all $elemMatch $size
 Text: $regex (with "$options": "i")
-Aggregate: $sum $avg $min $max $count
-Date: $year $month $dayOfMonth
+Aggregate: $sum $avg $min $max $count $first $last
+Date: $year $month $dayOfMonth $dayOfWeek $hour $minute $second
 
 EXAMPLES:
 
@@ -93,26 +127,32 @@ Generate query. Return JSON only.
 `;
 
 /**
- * Build prompt with runtime values
+ * Options for building MongoDB prompts with runtime values.
  */
-export function buildMongoPrompt(
-  schema: string, 
-  userInput: string,
-  options?: {
-    currentDate?: string;
-    timezone?: string;
-  }
-): string {
-  return mongoPromptTemplate
-    .replace('{{schema}}', schema)
-    .replace('{{input}}', userInput)
-    .replace('{{CURRENT_DATE}}', options?.currentDate || new Date().toISOString())
-    .replace('{{USER_TZ}}', options?.timezone || 'UTC');
+export interface BuildMongoPromptOptions {
+  /** ISO 8601 date string. Defaults to current date/time. */
+  currentDate?: string;
+  /** IANA timezone identifier. Defaults to 'UTC'. */
+  timezone?: string;
 }
 
 /**
- * Example usage:
+ * Builds a MongoDB prompt with runtime values.
  * 
+ * Replaces template placeholders with actual values:
+ * - {{schema}} → schema parameter
+ * - {{input}} → userInput parameter
+ * - {{CURRENT_DATE}} → currentDate option or current ISO date
+ * - {{USER_TZ}} → timezone option or 'UTC'
+ * 
+ * @param schema - The database schema description
+ * @param userInput - The natural language query request
+ * @param options - Optional runtime values for date and timezone
+ * @returns The formatted prompt string
+ * @throws {Error} If schema or userInput is empty
+ * 
+ * @example
+ * ```typescript
  * const schema = `
  * users: {_id: ObjectId, name: string, email: string, age: number}
  * orders: {userId: ObjectId, amount: number, status: string}
@@ -122,8 +162,30 @@ export function buildMongoPrompt(
  *   currentDate: new Date().toISOString(),
  *   timezone: 'America/New_York'
  * });
- * 
- * const response = await llm.generate(prompt);
- * const result = JSON.parse(response);
- * // Execute: db.collection(result.collection)[result.operation](result.query)
+ * ```
  */
+export function buildMongoPrompt(
+  schema: string,
+  userInput: string,
+  options?: BuildMongoPromptOptions
+): string {
+  // Input validation
+  if (!schema || typeof schema !== 'string' || !schema.trim()) {
+    throw new Error('Schema is required and must be a non-empty string');
+  }
+  
+  if (!userInput || typeof userInput !== 'string' || !userInput.trim()) {
+    throw new Error('User input is required and must be a non-empty string');
+  }
+
+  // Get runtime values with defaults
+  const currentDate = options?.currentDate || new Date().toISOString();
+  const timezone = options?.timezone || 'UTC';
+
+  // Replace all occurrences of each placeholder using global regex
+  return mongoPromptTemplate
+    .replace(/\{\{schema\}\}/g, schema.trim())
+    .replace(/\{\{input\}\}/g, userInput.trim())
+    .replace(/\{\{CURRENT_DATE\}\}/g, currentDate)
+    .replace(/\{\{USER_TZ\}\}/g, timezone);
+}
