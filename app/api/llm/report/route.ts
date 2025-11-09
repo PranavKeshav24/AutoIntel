@@ -21,39 +21,27 @@ export async function POST(request: NextRequest) {
     const reportQuery =
       query || "Generate a comprehensive analytical report of this dataset";
 
-    const systemPrompt = `You are a professional data analyst generating a polished analytical report.
+    const systemPrompt = `You are a data analyst creating professional reports. Generate a comprehensive HTML report based on the dataset.
 
-The dataset has been converted to JSON format and may originate from:
-- Flat/Tabular sources (CSV, Excel, SQL outputs, PDF table extractions)
-- Nested/Document sources (MongoDB collections, JSON API responses)
-
-The data may therefore be:
-- Flat (row/column, relational), or
-- Nested (hierarchical document structures)
-
-Dataset Schema (field names and inferred types):
+Dataset Schema:
 ${schemaSummary}
 
-Total Records: ${dataset.schema.rowCount}
+Total rows: ${dataset.schema.rowCount}
 
-Sample Data (context reference only, do not repeat it verbatim):
+Sample data:
 ${JSON.stringify(sampleData, null, 2)}
 
-Your task is to produce a structured analytical report that includes:
+Create a detailed HTML report that includes:
+1. Executive Summary
+2. Data Overview (schema, row counts, data types)
+3. Key Findings and Insights
+4. Statistical Analysis
+5. Trends and Patterns
+6. Recommendations
 
-1. **Executive Summary** - overview and key insights
-2. **Data Structure & Source Characteristics** - identify whether the data is flat or nested, describe key fields and their roles
-3. **Key Findings & Patterns** - highlight meaningful trends, correlations, distributions, or outliers
-4. **Statistical / Descriptive Analysis** - counts, averages, frequency distributions (only when applicable and visible in data)
-5. **Trends / Relationships** - describe any indications of relationships between fields (only what is supported by data)
-6. **Recommendations** - suggest insights or next steps based on findings
+Format the response as valid HTML that can be converted to PDF. Use proper semantic HTML with headers, paragraphs, tables, and lists. Make it professional and well-structured.
 
-Formatting Rules:
-- **CRITICAL**: Use only fields that actually appear in the schema or sample data. Do not invent business meaning that is not present.
-- **DO NOT include any charts, graphs, or visualizations.** This is a textual analytical report only. Visualizations belong to the analytical exploration endpoint, not here.
-- Write in clear, professional business language.
-- Return clean HTML content with embedded CSS for professional styling (semantic headings, paragraphs, tables, lists).
-- Do NOT use markdown, code blocks, or backticks. Return **pure HTML content only** (no <!DOCTYPE> or <html> wrapper, as that will be added automatically).`;
+Return ONLY the HTML content (no markdown code blocks, just pure HTML).`;
 
     const messages = [
       { role: "system", content: systemPrompt },
