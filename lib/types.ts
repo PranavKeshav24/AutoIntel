@@ -189,3 +189,66 @@ export type UploadPageState = {
   selectedVizIds: Set<string>;
   activeTab: string;
 };
+
+export interface VectorChunkMetadata {
+  datasetId: string;
+  source: string;
+  fileType: "text" | "pdf";
+  chunkIndex: number;
+  totalChunks: number;
+  uploadedAt: string;
+}
+
+/**
+ * Request to analyze text/PDF using RAG
+ */
+export interface TextAnalysisRequest {
+  datasetId: string;
+  query: string;
+  config?: {
+    apiKey?: string;
+    model?: string;
+  };
+}
+
+/**
+ * Response from text/PDF analysis
+ */
+export interface TextAnalysisResponse {
+  answer: string;
+  sources: string[];
+  conversationLog: Array<{
+    role: string;
+    content: string;
+  }>;
+}
+
+/**
+ * Request to extract PDF content
+ */
+export interface PDFExtractionRequest {
+  file: File;
+}
+
+/**
+ * Response from PDF extraction
+ */
+export interface PDFExtractionResponse {
+  text: string;
+  metadata: {
+    pageCount: number;
+    fileName: string;
+    fileSize: number;
+  };
+}
+
+/**
+ * Enhanced DataSet metadata for text/PDF sources
+ */
+export interface TextDataSetMeta {
+  datasetId: string;
+  chunkCount: number;
+  indexed: boolean;
+  indexedAt: string;
+  totalLines: number;
+}

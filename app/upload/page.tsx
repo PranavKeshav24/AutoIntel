@@ -326,9 +326,44 @@ export default function UploadPage() {
 
     try {
       const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
+      const isTextSource =
+        dataset?.source.kind === "text" || dataset?.source.kind === "pdf";
       const isReportRequest = /report|summary|document|pdf/i.test(userMessage);
       const isVisualizationRequest =
         /visuali[sz]ation|chart|graph|plot|show.*data/i.test(userMessage);
+
+      if (isTextSource && dataset?.id) {
+        const response = await fetch("/api/text/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            datasetId: dataset.id,
+            query: userMessage,
+            config: {
+              apiKey: config.apiKey,
+              model: config.model || "gpt-4o-mini",
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.details || "Failed to analyze text");
+        }
+
+        const data = await response.json();
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data.answer,
+          },
+        ]);
+
+        setLoading(false);
+        return;
+      }
 
       if (isSQLSource) {
         if (isReportRequest) {

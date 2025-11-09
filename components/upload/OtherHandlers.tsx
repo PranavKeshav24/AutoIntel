@@ -18,9 +18,13 @@ import {
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CohereEmbeddings } from "@langchain/cohere";
-import { PineconeStore } from "@langchain/pinecone";
-import { Pinecone as PineconeClient } from "@pinecone-database/pinecone";
+import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { Document } from "@langchain/core/documents";
+import { v4 as uuidv4 } from "uuid";
+
+// Global store for vector stores by namespace/datasetId
+const vectorStores = new Map<string, MemoryVectorStore>();
 
 // JSON Handler
 export function JsonHandler({ onDataLoaded, onError }: any) {
@@ -85,44 +89,145 @@ export function JsonHandler({ onDataLoaded, onError }: any) {
   );
 }
 
-// Text/PDF Handler
-export function TextPdfHandler({ onDataLoaded, onError, type }: any) {
-  const [processing, setProcessing] = useState(false);
-  const embeddings = new CohereEmbeddings({
-    model: "embed-english-v3.0",
-  });
-  const pinecone = new PineconeClient({
-    apiKey: process.env.PINECONE_API_KEY,
-  });
-  const pineconeIndex = pinecone.Index("your-index-name");
+interface TextPdfHandlerProps {
+  onDataLoaded: (dataset: DataSet) => void;
+  onError: (error: string) => void;
+  type: "text" | "pdf";
+}
 
-  const vectorStore = new PineconeStore(embeddings, {
-    pineconeIndex,
-    maxConcurrency: 5,
-  });
+// Text/PDF Handler
+export function TextPdfHandler({
+  onDataLoaded,
+  onError,
+  type,
+}: TextPdfHandlerProps) {
+  const [processing, setProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState("");
+
   const handleFile = async (file: File) => {
     setProcessing(true);
+    setProgress(0);
+    setStatusMessage("Reading file...");
+
     try {
-      const text = await file.text();
-      // Simple text parsing - split by lines
-      const lines = text.split("\n").filter((l) => l.trim());
-      const rows = lines.map((line, i) => ({
-        line_number: i + 1,
-        content: line.trim(),
-      }));
+      let text: string;
+      if (type === "pdf") {
+        setStatusMessage("Extracting PDF content...");
+        setProgress(10);
+
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/text/extract-pdf", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to extract PDF content");
+        }
+
+        const data = await response.json();
+        text = data.text;
+      } else {
+        text = await file.text();
+      }
+
+      setProgress(20);
+      setStatusMessage("Initializing embeddings...");
+
+      const datasetId = `${type}_${uuidv4()}`;
+
+      // Initialize embeddings
+      const embeddings = new CohereEmbeddings({
+        apiKey: process.env.NEXT_PUBLIC_COHERE_API_KEY,
+        model: "embed-english-v3.0",
+      });
+
+      // Create text splitter
       const splitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1000,
         chunkOverlap: 200,
+        separators: ["\n\n", "\n", ". ", " ", ""],
       });
-      const allSplits = await splitter.splitDocuments(text);
-      console.log(`Split blog post into ${allSplits.length} sub-documents.`);
-      await vectorStore.addDocuments(allSplits);
 
-      const dataset = DataProcessor.createDataSet(rows, type, file.name);
-      onDataLoaded(dataset);
+      const doc = new Document({
+        pageContent: text,
+        metadata: {
+          fileType: type,
+          datasetId,
+          source: file.name,
+          uploadedAt: new Date().toISOString(),
+        },
+      });
+
+      const allSplits = await splitter.splitDocuments([doc]);
+      allSplits.forEach((chunk, idx) => {
+        chunk.metadata.chunkIndex = idx;
+        chunk.metadata.totalChunks = allSplits.length;
+      });
+
+      setProgress(60);
+      setStatusMessage(
+        `Storing ${allSplits.length} chunks in vector database...`
+      );
+
+      // Store in MemoryVectorStore with namespace isolation
+      const vectorStore = await MemoryVectorStore.fromDocuments(
+        allSplits,
+        embeddings
+      );
+
+      // Store in global map with datasetId as key for namespace isolation
+      vectorStores.set(datasetId, vectorStore);
+
+      setProgress(80);
+      setStatusMessage("Creating dataset...");
+
+      // Create dataset for display
+      const lines = text.split("\n").filter((l) => l.trim());
+      const rows = lines.slice(0, 100).map((line, i) => ({
+        line_number: i + 1,
+        content: line.trim().substring(0, 200), // Preview only
+      }));
+
+      const dataset: DataSet = {
+        schema: {
+          fields: [
+            { name: "line_number", type: "number" },
+            { name: "content", type: "string" },
+          ],
+          rowCount: lines.length,
+        },
+        rows,
+        source: {
+          kind: type,
+          name: file.name,
+          meta: {
+            datasetId,
+            chunkCount: allSplits.length,
+            indexed: true,
+            indexedAt: new Date().toISOString(),
+            totalLines: lines.length,
+          },
+        },
+        id: datasetId,
+      };
+
+      setProgress(100);
+      setStatusMessage("Complete!");
+
+      setTimeout(() => {
+        onDataLoaded(dataset);
+        setProcessing(false);
+        setProgress(0);
+        setStatusMessage("");
+      }, 500);
     } catch (err: any) {
+      console.error("File processing error:", err);
       onError(err.message || `Failed to process ${type} file`);
-    } finally {
+      setProgress(0);
+      setStatusMessage("");
       setProcessing(false);
     }
   };
@@ -132,6 +237,21 @@ export function TextPdfHandler({ onDataLoaded, onError, type }: any) {
       <div className="flex flex-col items-center space-y-4">
         <FileText className="h-12 w-12 text-muted-foreground" />
         <p className="text-lg font-medium">Upload {type.toUpperCase()} File</p>
+
+        {processing && (
+          <div className="w-full space-y-2">
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div
+                className="bg-primary h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+            <p className="text-sm text-center text-muted-foreground">
+              {statusMessage}
+            </p>
+          </div>
+        )}
+
         <label htmlFor={`${type}-upload`}>
           <Button disabled={processing} asChild>
             <span>
@@ -279,7 +399,6 @@ export function AdSenseHandler({ onDataLoaded, onError }: any) {
   const [checking, setChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Check authentication status on mount
   useEffect(() => {
     checkAuthStatus();
   }, []);
@@ -311,7 +430,6 @@ export function AdSenseHandler({ onDataLoaded, onError }: any) {
       if (!response.ok) {
         const errorData = await response.json();
 
-        // If requires auth, redirect to auth
         if (errorData.requiresAuth) {
           setIsAuthenticated(false);
           window.location.href = "/api/adsense/auth";
@@ -441,3 +559,6 @@ export function AdSenseHandler({ onDataLoaded, onError }: any) {
     </Card>
   );
 }
+
+// Export the vectorStores map for use in other parts of the application
+export { vectorStores };
