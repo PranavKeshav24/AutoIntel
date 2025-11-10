@@ -137,10 +137,10 @@ export function TextPdfHandler({
       setStatusMessage("Initializing embeddings...");
 
       const datasetId = `${type}_${uuidv4()}`;
-
+      console.log(`Cohere API Key: ${process.env.NEXT_PUBLIC_COHERE_API_KEY}`);
       // Initialize embeddings
       const embeddings = new CohereEmbeddings({
-        apiKey: process.env.NEXT_PUBLIC_COHERE_API_KEY,
+        apiKey: "OVJDv4jVQoSqxCzJgGEYnL4KoD1LtgLHU914O4LP",
         model: "embed-english-v3.0",
       });
 

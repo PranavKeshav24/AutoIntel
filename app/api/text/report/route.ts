@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
 
     const model = new ChatGoogleGenerativeAI({
       model: "gemini-2.5-flash-lite",
-      apiKey: "your-api-key",
+      apiKey: "AIzaSyAQprJSIwbC9JW7KWeflLaI-9WXifgZbyg",
     });
 
     // Create tools array
