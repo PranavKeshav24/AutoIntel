@@ -59,73 +59,65 @@ export async function POST(
         );
 
 case "mongodb": {
+  sourceName = "MongoDB Database";
+
   try {
     const { MongoClient } = await import("mongodb");
     const client = new MongoClient(connectionString);
 
     await client.connect();
 
-    const dbName = connectionString.split("/").pop()?.split("?")[0];
-    if (!dbName) {
-      throw new Error("Failed to determine database name from URI.");
-    }
+    
+    const adminDb = client.db().admin();
+    const dbList = await adminDb.listDatabases();
 
-    const db = client.db(dbName);
+    const allDocs: any[] = [];
+    let totalCollections = 0;
 
-    const collections = await db.listCollections().toArray();
-    if (collections.length === 0) {
-      return NextResponse.json(
-        { error: "No collections found in this MongoDB database" },
-        { status: 400 }
-      );
-    }
+    for (const dbInfo of dbList.databases) {
+      const db = client.db(dbInfo.name);
+      const collections = await db.listCollections().toArray();
 
-    let selectedCollection = null;
-    for (const c of collections) {
-      const col = db.collection(c.name);
-      const count = await col.estimatedDocumentCount();
-      if (count > 0) {
-        selectedCollection = col;
-        break;
+      for (const colInfo of collections) {
+        const col = db.collection(colInfo.name);
+        const docs = await col.find({}).limit(200).toArray();
+        
+        if (docs.length > 0) {
+          allDocs.push(...docs);
+          totalCollections++;
+        }
       }
     }
 
-    if (!selectedCollection) {
+    if (allDocs.length === 0) {
       return NextResponse.json(
-        { error: "All collections in this database are empty" },
+        { error: "No data found across all databases" },
         { status: 400 }
       );
     }
 
-    const docs = await selectedCollection.find({}).limit(200).toArray();
-
-    const dataset = mongoToDataset(docs);
-
+    const dataset = mongoToDataset(allDocs);
     return NextResponse.json({
-      success: true,
       dataset,
-      collection: selectedCollection.collectionName,
+      totalCollections,
+      totalDocs: allDocs.length
     });
 
   } catch (err: any) {
-  console.error("MONGODB CONNECT ERROR:", err);
-  return NextResponse.json(
-    { error: err?.message || "Failed to connect to MongoDB" },
-    { status: 500 }
-  );
+    console.error("MONGODB CONNECT ERROR:", err);
+    return NextResponse.json(
+      { error: err.message || "Failed to connect to MongoDB" },
+      { status: 500 }
+    );
+  }
 }
-}
+
          default:
         return NextResponse.json(
           { error: "Unsupported database type" },
           { status: 400 }
         );
     }
-
-    // If you implement DB calls above, use DataProcessor.createDataSet here:
-    // if (rows.length === 0) { ... }
-    // const dataset = DataProcessor.createDataSet(rows, dbType as any, sourceName);
-    // return NextResponse.json({ dataset });
   } catch (error: any) {
     const { dbType } = await params;
     console.error(`Error in ${dbType} connect API:`, error);
