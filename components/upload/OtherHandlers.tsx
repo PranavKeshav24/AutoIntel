@@ -162,7 +162,7 @@ export function TextPdfHandler({
       });
 
       const allSplits = await splitter.splitDocuments([doc]);
-      allSplits.forEach((chunk, idx) => {
+      allSplits.forEach((chunk: any, idx: any) => {
         chunk.metadata.chunkIndex = idx;
         chunk.metadata.totalChunks = allSplits.length;
       });

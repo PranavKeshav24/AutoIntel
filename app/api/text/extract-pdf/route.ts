@@ -3,135 +3,40 @@ import { writeFile, unlink, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { existsSync } from "fs";
-import { createReadStream, createWriteStream } from "fs";
-import { pipeline } from "stream/promises";
-import unzipper from "unzipper";
+import PDFParser from "pdf2json";
 
+// Extract PDF text using pdf2json
 async function extractPDFText(
   filePath: string
 ): Promise<{ text: string; pageCount: number }> {
-  let readStream;
-  let extractedZipPath: string | null = null;
+  return new Promise((resolve, reject) => {
+    const pdfParser = new (PDFParser as any)(null, 1);
 
-  try {
-    const {
-      ServicePrincipalCredentials,
-      PDFServices,
-      MimeType,
-      ExtractPDFParams,
-      ExtractElementType,
-      ExtractPDFJob,
-      ExtractPDFResult,
-    } = require("@adobe/pdfservices-node-sdk");
-
-    // Check for required credentials
-    if (
-      !process.env.PDF_SERVICES_CLIENT_ID ||
-      !process.env.PDF_SERVICES_CLIENT_SECRET
-    ) {
-      throw new Error(
-        "Adobe PDF Services credentials not found in environment variables"
-      );
-    }
-
-    // Initial setup, create credentials instance
-    const credentials = new ServicePrincipalCredentials({
-      clientId: process.env.PDF_SERVICES_CLIENT_ID,
-      clientSecret: process.env.PDF_SERVICES_CLIENT_SECRET,
+    pdfParser.on("pdfParser_dataError", (errData: any) => {
+      console.error("PDF Parser Error:", errData.parserError);
+      reject(new Error(errData.parserError || "PDF parsing failed"));
     });
 
-    // Creates a PDF Services instance
-    const pdfServices = new PDFServices({ credentials });
-
-    // Creates an asset from source file and upload
-    readStream = createReadStream(filePath);
-    const inputAsset = await pdfServices.upload({
-      readStream,
-      mimeType: MimeType.PDF,
-    });
-
-    // Create parameters for the job
-    const params = new ExtractPDFParams({
-      elementsToExtract: [ExtractElementType.TEXT],
-    });
-
-    // Creates a new job instance
-    const job = new ExtractPDFJob({ inputAsset, params });
-
-    // Submit the job and get the job result
-    const pollingURL = await pdfServices.submit({ job });
-    const pdfServicesResponse = await pdfServices.getJobResult({
-      pollingURL,
-      resultType: ExtractPDFResult,
-    });
-
-    // Get content from the resulting asset(s)
-    const resultAsset = pdfServicesResponse.result.resource;
-    const streamAsset = await pdfServices.getContent({ asset: resultAsset });
-
-    // Save the ZIP file temporarily
-    extractedZipPath = join(tmpdir(), `extract_${Date.now()}.zip`);
-    const writeStream = createWriteStream(extractedZipPath);
-
-    await pipeline(streamAsset.readStream, writeStream);
-
-    // Extract and parse the JSON from the ZIP using unzipper
-    const directory = await unzipper.Open.file(extractedZipPath);
-
-    let structuredDataFile = null;
-    for (const file of directory.files) {
-      if (file.path === "structuredData.json") {
-        structuredDataFile = file;
-        break;
-      }
-    }
-
-    if (!structuredDataFile) {
-      throw new Error("structuredData.json not found in extracted ZIP");
-    }
-
-    const jsonBuffer = await structuredDataFile.buffer();
-    const jsonContent = jsonBuffer.toString("utf8");
-    const structuredData = JSON.parse(jsonContent);
-
-    // Extract text from structured data
-    const textParts: string[] = [];
-    let pageCount = 0;
-
-    if (structuredData.elements) {
-      structuredData.elements.forEach((element: any) => {
-        if (element.Text) {
-          textParts.push(element.Text);
-        }
-        // Track pages
-        if (element.Page !== undefined && element.Page > pageCount) {
-          pageCount = element.Page;
-        }
-      });
-    }
-
-    const fullText = textParts.join(" ").replace(/\s+/g, " ").trim();
-
-    return {
-      text: fullText,
-      pageCount: pageCount || 1,
-    };
-  } catch (error) {
-    console.error("Adobe PDF Services extraction failed:", error);
-    throw error;
-  } finally {
-    // Cleanup
-    if (readStream) {
-      readStream.destroy();
-    }
-    if (extractedZipPath && existsSync(extractedZipPath)) {
+    pdfParser.on("pdfParser_dataReady", () => {
       try {
-        await unlink(extractedZipPath);
-      } catch (err) {
-        console.error("Failed to delete extracted ZIP:", err);
+        const rawText = (pdfParser as any).getRawTextContent();
+        const pdfData = (pdfParser as any).getRawTextContent();
+
+        // Get page count from the parser
+        const pageCount = pdfParser.Pages?.length || 1;
+
+        resolve({
+          text: rawText || "",
+          pageCount: pageCount,
+        });
+      } catch (error: any) {
+        reject(new Error(`Failed to extract text: ${error.message}`));
       }
-    }
-  }
+    });
+
+    // Load the PDF file
+    pdfParser.loadPDF(filePath);
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -176,16 +81,14 @@ export async function POST(req: NextRequest) {
       throw new Error("Failed to write temporary file");
     }
 
-    console.log("Extracting PDF text using Adobe PDF Services...");
+    console.log("Extracting PDF text using pdf2json...");
 
-    // Extract text using Adobe PDF Services
+    // Extract text using pdf2json
     const { text, pageCount } = await extractPDFText(tempFilePath);
 
     console.log(
       `Extraction complete: ${text.length} characters from ${pageCount} pages`
     );
-
-    console.log("Extracted text preview:", text.slice(0, 200));
 
     if (!text || text.trim().length === 0) {
       console.warn("PDF appears to be empty or contains only images");
