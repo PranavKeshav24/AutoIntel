@@ -1,11 +1,13 @@
 // app/api/database/[dbType]/connect/route.ts
 import { NextResponse } from "next/server";
 import { DataProcessor } from "@/lib/dataProcessor";
+import { mongoToDataset } from "@/lib/mongoToDataset";
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ dbType: string }> }
-): Promise<NextResponse> {
+  { params }: { params: { dbType: string } }
+) {
+
   try {
     const body = await request.json();
     const { connectionString } = body || {};
@@ -56,18 +58,64 @@ export async function POST(
           { status: 501 }
         );
 
-      case "mongodb":
-        sourceName = "MongoDB Database";
-        return NextResponse.json(
-          {
-            error:
-              "MongoDB connection not implemented. Please configure in your API route.",
-            hint: "Install 'mongodb' package and implement connection logic",
-          },
-          { status: 501 }
-        );
+case "mongodb": {
+  try {
+    const { MongoClient } = await import("mongodb");
+    const client = new MongoClient(connectionString);
 
-      default:
+    await client.connect();
+
+    const dbName = connectionString.split("/").pop()?.split("?")[0];
+    if (!dbName) {
+      throw new Error("Failed to determine database name from URI.");
+    }
+
+    const db = client.db(dbName);
+
+    const collections = await db.listCollections().toArray();
+    if (collections.length === 0) {
+      return NextResponse.json(
+        { error: "No collections found in this MongoDB database" },
+        { status: 400 }
+      );
+    }
+
+    let selectedCollection = null;
+    for (const c of collections) {
+      const col = db.collection(c.name);
+      const count = await col.estimatedDocumentCount();
+      if (count > 0) {
+        selectedCollection = col;
+        break;
+      }
+    }
+
+    if (!selectedCollection) {
+      return NextResponse.json(
+        { error: "All collections in this database are empty" },
+        { status: 400 }
+      );
+    }
+
+    const docs = await selectedCollection.find({}).limit(200).toArray();
+
+    const dataset = mongoToDataset(docs);
+
+    return NextResponse.json({
+      success: true,
+      dataset,
+      collection: selectedCollection.collectionName,
+    });
+
+  } catch (err: any) {
+  console.error("MONGODB CONNECT ERROR:", err);
+  return NextResponse.json(
+    { error: err?.message || "Failed to connect to MongoDB" },
+    { status: 500 }
+  );
+}
+}
+         default:
         return NextResponse.json(
           { error: "Unsupported database type" },
           { status: 400 }
