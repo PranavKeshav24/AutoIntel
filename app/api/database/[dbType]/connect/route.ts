@@ -7,11 +7,10 @@ export async function POST(
   request: Request,
   { params }: { params: { dbType: string } }
 ) {
-
   try {
     const body = await request.json();
     const { connectionString } = body || {};
-    const { dbType } = await params;
+    const { dbType } = params;
 
     if (!connectionString) {
       return NextResponse.json(
@@ -58,64 +57,63 @@ export async function POST(
           { status: 501 }
         );
 
-case "mongodb": {
-  try {
-    const { MongoClient } = await import("mongodb");
-    const client = new MongoClient(connectionString);
+      case "mongodb": {
+        try {
+          const { MongoClient } = await import("mongodb");
+          const client = new MongoClient(connectionString);
 
-    await client.connect();
+          await client.connect();
 
-    const dbName = connectionString.split("/").pop()?.split("?")[0];
-    if (!dbName) {
-      throw new Error("Failed to determine database name from URI.");
-    }
+          const dbName = connectionString.split("/").pop()?.split("?")[0];
+          if (!dbName) {
+            throw new Error("Failed to determine database name from URI.");
+          }
 
-    const db = client.db(dbName);
+          const db = client.db(dbName);
 
-    const collections = await db.listCollections().toArray();
-    if (collections.length === 0) {
-      return NextResponse.json(
-        { error: "No collections found in this MongoDB database" },
-        { status: 400 }
-      );
-    }
+          const collections = await db.listCollections().toArray();
+          if (collections.length === 0) {
+            return NextResponse.json(
+              { error: "No collections found in this MongoDB database" },
+              { status: 400 }
+            );
+          }
 
-    let selectedCollection = null;
-    for (const c of collections) {
-      const col = db.collection(c.name);
-      const count = await col.estimatedDocumentCount();
-      if (count > 0) {
-        selectedCollection = col;
-        break;
+          let selectedCollection = null;
+          for (const c of collections) {
+            const col = db.collection(c.name);
+            const count = await col.estimatedDocumentCount();
+            if (count > 0) {
+              selectedCollection = col;
+              break;
+            }
+          }
+
+          if (!selectedCollection) {
+            return NextResponse.json(
+              { error: "All collections in this database are empty" },
+              { status: 400 }
+            );
+          }
+
+          const docs = await selectedCollection.find({}).limit(200).toArray();
+
+          const dataset = mongoToDataset(docs);
+
+          return NextResponse.json({
+            success: true,
+            dataset,
+            collection: selectedCollection.collectionName,
+          });
+        } catch (err: any) {
+          console.error("MONGODB CONNECT ERROR:", err);
+          return NextResponse.json(
+            { error: err?.message || "Failed to connect to MongoDB" },
+            { status: 500 }
+          );
+        }
       }
-    }
-
-    if (!selectedCollection) {
-      return NextResponse.json(
-        { error: "All collections in this database are empty" },
-        { status: 400 }
-      );
-    }
-
-    const docs = await selectedCollection.find({}).limit(200).toArray();
-
-    const dataset = mongoToDataset(docs);
-
-    return NextResponse.json({
-      success: true,
-      dataset,
-      collection: selectedCollection.collectionName,
-    });
-
-  } catch (err: any) {
-  console.error("MONGODB CONNECT ERROR:", err);
-  return NextResponse.json(
-    { error: err?.message || "Failed to connect to MongoDB" },
-    { status: 500 }
-  );
-}
-}
-         default:
+      default:
         return NextResponse.json(
           { error: "Unsupported database type" },
           { status: 400 }
@@ -127,7 +125,7 @@ case "mongodb": {
     // const dataset = DataProcessor.createDataSet(rows, dbType as any, sourceName);
     // return NextResponse.json({ dataset });
   } catch (error: any) {
-    const { dbType } = await params;
+    const { dbType } = params;
     console.error(`Error in ${dbType} connect API:`, error);
     return NextResponse.json(
       { error: error?.message || "Database connection failed" },
