@@ -845,7 +845,7 @@ export default function UploadPage() {
               selectedReportIds={selectedReportIds}
               selectedLanguage={selectedLanguage} // ✅ NEW
               onLanguageChange={setSelectedLanguage} // ✅ NEW
-              onGenerateStory={() => generateStory(selectedLanguage)} // ✅ PASS LANGUAGE TO BACKEND
+              onGenerateStory={() => generateStory(undefined, selectedLanguage)} // ✅ PASS LANGUAGE TO BACKEND
             />
           </div>
         </div>
