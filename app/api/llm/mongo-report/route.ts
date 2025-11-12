@@ -88,7 +88,7 @@ Return ONLY the HTML content (no markdown code blocks, just pure HTML).`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: config.model || "google/gemini-2.0-flash-exp:free",
+          model: config.model || "meta-llama/llama-4-maverick:free",
           messages: [{ role: "system", content: systemPrompt }],
         }),
       }

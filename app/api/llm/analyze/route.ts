@@ -80,7 +80,7 @@ Respond in JSON format:
           "X-Title": config.title || "Data Analysis App",
         },
         body: JSON.stringify({
-          model: config.model || "google/gemini-2.0-flash-exp:free",
+          model: config.model || "meta-llama/llama-4-maverick:free",
           messages,
         }),
       }

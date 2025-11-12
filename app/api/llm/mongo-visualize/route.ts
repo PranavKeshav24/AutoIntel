@@ -151,7 +151,7 @@ Return JSON only. No markdown.`;
           ...(config.title && { "X-Title": config.title }),
         },
         body: JSON.stringify({
-          model: config.model || "google/gemini-2.0-flash-exp:free",
+          model: config.model || "meta-llama/llama-4-maverick:free",
           messages: [{ role: "system", content: systemPrompt }],
         }),
       }

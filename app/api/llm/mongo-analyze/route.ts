@@ -67,7 +67,7 @@ Respond in JSON format:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: config.model || "google/gemini-2.0-flash-exp:free",
+          model: config.model || "meta-llama/llama-4-maverick:free",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: query },
