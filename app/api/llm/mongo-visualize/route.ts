@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mongoToDataset } from "@/lib/mongoToDataset";
+import mongoToDataset from "@/lib/mongoToDataset";
 
 /**
  * Configuration for LLM API calls
