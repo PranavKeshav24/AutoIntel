@@ -24,7 +24,6 @@ import {
 import { PreviewTable } from "@/components/upload/PreviewTable";
 import { getUserInfo } from "@/lib/api";
 
-// Import modularized components
 import { ApiKeyConfig } from "@/components/upload/APIKeyConfig";
 import { AdSenseBanner } from "@/components/upload/AdSenseBanner";
 import { DataSourceSelector } from "@/components/upload/DataSourceSelector";
@@ -35,6 +34,7 @@ import { StatsTab } from "@/components/upload/StatsTab";
 import { useSQLOperations } from "@/hooks/use-sql-operations";
 import { useReportDownload } from "@/hooks/use-report-download";
 import { Message } from "@/lib/types";
+import StoryPresenter from "@/components/upload/StoryPresenter";
 
 export default function UploadPage() {
   const [source, setSource] = useState<DataSourceType>("csv");
@@ -72,6 +72,17 @@ export default function UploadPage() {
 
   // Active tab
   const [activeTab, setActiveTab] = useState<string>("table");
+
+  // Story presentation states
+  const [showStoryPresenter, setShowStoryPresenter] = useState(false);
+  const [storyData, setStoryData] = useState<any>(null);
+  const [storyLoading, setStoryLoading] = useState(false);
+  const [reports, setReports] = useState<
+    Array<{ id: string; title: string; content: string; html: string }>
+  >([]);
+  const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(
+    new Set()
+  );
 
   // Custom hooks
   const sqlOps = useSQLOperations(dbType);
@@ -329,73 +340,56 @@ export default function UploadPage() {
       const isReportRequest = /report|summary|document|pdf/i.test(userMessage);
       const isVisualizationRequest =
         /visuali[sz]ation|chart|graph|plot|show.*data/i.test(userMessage);
+      const isStoryRequest = /story|presentation|ppt|powerpoint|narrate/i.test(
+        userMessage
+      );
 
-      if (isSQLSource) {
+      if (isStoryRequest) {
+        await generateStory(userMessage);
+      } else if (isSQLSource) {
         if (isReportRequest) {
-          const selectedVizContext = visualizations
-            .filter((viz) => selectedVizIds.has(viz.id))
-            .map((viz) => ({
-              id: viz.id,
-              title: viz.title,
-              description: viz.description,
-              plotlyData: viz.plotlyData,
-              plotlyLayout: viz.plotlyLayout,
-            }));
-
           const reportHtml = await sqlOps.generateSQLReport(userMessage);
+
+          // Save report for selection
+          const newReport = {
+            id: `report-${Date.now()}`,
+            title: `Report: ${userMessage.substring(0, 50)}`,
+            content: reportHtml.replace(/<[^>]*>/g, "").substring(0, 500),
+            html: reportHtml,
+          };
+
+          setReports((prev) => [...prev, newReport]);
 
           setMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              content: `✓ Report generated successfully! ${
-                selectedVizContext.length > 0
-                  ? `Including ${selectedVizContext.length} selected visualization(s).`
-                  : ""
-              } Click below to download.`,
+              content: `✓ Report generated successfully! Click below to download or include it in your story presentation.`,
               html: reportHtml,
             },
           ]);
         } else if (isVisualizationRequest) {
           const vizArray = await sqlOps.requestSQLVisualizations(userMessage);
-
           if (vizArray.length > 0) {
             setVisualizations((prev) => [...prev, ...vizArray]);
-
             setMessages((prev) => [
               ...prev,
               {
                 role: "assistant",
                 content: `✓ Generated ${vizArray.length} visualization${
                   vizArray.length !== 1 ? "s" : ""
-                } from your query!`,
+                }!`,
               },
             ]);
             setActiveTab("charts");
-          } else {
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: "assistant",
-                content:
-                  "⚠ No visualizations could be generated from your query. Try rephrasing or asking for specific chart types.",
-              },
-            ]);
           }
         } else {
           const data = await sqlOps.fetchSQLData(userMessage);
-
-          if (
-            data.results &&
-            Array.isArray(data.results) &&
-            data.results.length > 0
-          ) {
-            const columns = Object.keys(data.results[0]);
+          if (data.results?.length > 0) {
             setSqlTableData(data.results);
-            setSqlColumns(columns);
+            setSqlColumns(Object.keys(data.results[0]));
             setActiveTab("table");
           }
-
           setMessages((prev) => [
             ...prev,
             {
@@ -437,15 +431,28 @@ export default function UploadPage() {
           if (!response.ok) throw new Error("Failed to generate report");
 
           const data = await response.json();
+
+          // Save report for selection
+          const newReport = {
+            id: `report-${Date.now()}`,
+            title: `Report: ${userMessage.substring(0, 50)}`,
+            content: data.htmlMarkdown
+              .replace(/<[^>]*>/g, "")
+              .substring(0, 500),
+            html: data.htmlMarkdown,
+          };
+
+          setReports((prev) => [...prev, newReport]);
+
           setMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              content: `✓ Report generated successfully! ${
+              content: `✓ Report generated! ${
                 selectedVizContext.length > 0
-                  ? `Including ${selectedVizContext.length} selected visualization(s).`
+                  ? `Including ${selectedVizContext.length} visualization(s).`
                   : ""
-              } Click below to download.`,
+              } Click to download or include in story.`,
               html: data.htmlMarkdown,
             },
           ]);
@@ -460,7 +467,7 @@ export default function UploadPage() {
 
           const data = await response.json();
 
-          if (data.visualizations && data.visualizations.length > 0) {
+          if (data.visualizations?.length > 0) {
             setVisualizations(data.visualizations);
             setActiveTab("charts");
           }
@@ -479,6 +486,19 @@ export default function UploadPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Add toggle functions:
+  const toggleReportSelection = (reportId: string) => {
+    setSelectedReportIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(reportId)) {
+        newSet.delete(reportId);
+      } else {
+        newSet.add(reportId);
+      }
+      return newSet;
+    });
   };
 
   const requestVisualizations = async () => {
@@ -569,10 +589,98 @@ export default function UploadPage() {
     }
   };
 
+  const generateStory = async (query?: string) => {
+    setStoryLoading(true);
+    try {
+      const selectedVizContext = visualizations
+        .filter((viz) => selectedVizIds.has(viz.id))
+        .map((viz) => ({
+          id: viz.id,
+          title: viz.title,
+          description: viz.description,
+          plotlyData: viz.plotlyData,
+          plotlyLayout: viz.plotlyLayout,
+        }));
+
+      const selectedReportContext = reports
+        .filter((report) => selectedReportIds.has(report.id))
+        .map((report) => ({
+          id: report.id,
+          title: report.title,
+          content: report.content,
+          html: report.html,
+        }));
+
+      if (
+        selectedVizContext.length === 0 &&
+        selectedReportContext.length === 0
+      ) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              "⚠ Please select at least one visualization or report to generate a story presentation.",
+          },
+        ]);
+        return;
+      }
+
+      const response = await fetch("/api/llm/story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset,
+          selectedVisualizations: selectedVizContext,
+          selectedReports: selectedReportContext,
+          config,
+          reportContext: query || "Generate a compelling data story",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate story presentation");
+      }
+
+      const data = await response.json();
+      setStoryData(data);
+      setShowStoryPresenter(true);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `✓ Story presentation generated! ${data.slides.length} slides with narration ready. Click to view.`,
+        },
+      ]);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `✗ Error: ${err.message}` },
+      ]);
+    } finally {
+      setStoryLoading(false);
+    }
+  };
+
   const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
 
   return (
     <div className="container mx-auto px-4 md:px-16 py-8 md:pt-24">
+      {/* Story Presenter Modal */}
+      {showStoryPresenter && storyData && (
+        <StoryPresenter
+          presentationTitle={storyData.presentationTitle}
+          presentationSubtitle={storyData.presentationSubtitle}
+          slides={storyData.slides}
+          pptxData={storyData.pptxData}
+          visualizations={visualizations.filter((viz) =>
+            selectedVizIds.has(viz.id)
+          )}
+          onClose={() => setShowStoryPresenter(false)}
+        />
+      )}
+
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Data Analysis Platform</h1>
         <p className="text-muted-foreground">
@@ -724,10 +832,16 @@ export default function UploadPage() {
               loading={loading}
               downloadLoading={downloadLoading}
               selectedVizCount={selectedVizIds.size}
+              selectedReportCount={selectedReportIds.size}
+              reports={reports}
               isSQLSource={isSQLSource}
+              storyLoading={storyLoading}
               onInputChange={setInput}
               onSendMessage={sendMessage}
               onDownloadReport={handleDownloadReport}
+              onGenerateStory={() => generateStory()}
+              onToggleReportSelection={toggleReportSelection}
+              selectedReportIds={selectedReportIds}
             />
           </div>
         </div>
