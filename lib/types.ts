@@ -203,7 +203,7 @@ export type Message = {
   html?: string;
   sqlData?: {
     question: string;
-    generated_sql: string;
+    sql_query: string;
     results: any[];
   };
   reportId?: string; // Link to saved report
@@ -325,7 +325,7 @@ export interface APIResponse<T> {
 
 export interface SQLQueryResult {
   question: string;
-  generated_sql: string;
+  sql_query: string;
   results: any[];
   execution_time?: number;
   row_count?: number;

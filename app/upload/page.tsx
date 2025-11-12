@@ -399,7 +399,7 @@ export default function UploadPage() {
               } row${data.results?.length !== 1 ? "s" : ""} returned.`,
               sqlData: {
                 question: data.question || userMessage,
-                generated_sql: data.generated_sql || "",
+                sql_query: data.sql_query || "",
                 results: data.results || [],
               },
             },
