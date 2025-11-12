@@ -82,7 +82,7 @@ Return ONLY a JSON array, no markdown formatting.`;
           "X-Title": config.title || "Data Analysis App",
         },
         body: JSON.stringify({
-          model: config.model || "meta-llama/llama-4-maverick:free",
+          model: config.model || "google/gemini-2.0-flash-exp:free",
           messages,
           temperature: 0.7,
         }),

@@ -6,7 +6,10 @@ export async function POST(req: NextRequest) {
     const { documents, config } = await req.json();
 
     if (!documents || !config?.apiKey) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
     }
 
     const flattened = flattenDocuments(documents);
@@ -76,17 +79,20 @@ Format the response as valid HTML that can be converted to PDF. Use proper seman
 
 Return ONLY the HTML content (no markdown code blocks, just pure HTML).`;
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: config.model || "openai/gpt-oss-20b:free",
-        messages: [{ role: "system", content: systemPrompt }],
-      }),
-    });
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: config.model || "google/gemini-2.0-flash-exp:free",
+          messages: [{ role: "system", content: systemPrompt }],
+        }),
+      }
+    );
 
     const data = await response.json();
     let html = data.choices[0]?.message?.content || "";
