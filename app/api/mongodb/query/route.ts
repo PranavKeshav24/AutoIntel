@@ -3,7 +3,7 @@ import { MongoClient, Db, MongoServerError } from "mongodb";
 import { z } from "zod";
 import { createMongoPrompt } from "@/lib/mongoLangChain";
 import { getLing1TLLM } from "@/app/api/llm";
-import { mongoToDataset } from "@/lib/mongoToDataset";
+import mongoToDataset from "@/lib/mongoToDataset";
 
 
 const MongoOperationSchema = z.enum([
@@ -536,7 +536,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
 
     return NextResponse.json({
       success: true,
-      result, // Always include the raw result
+      result: result.answer, // Always include the raw result
       dataset, // Dataset format for analyze/report/visualize (only for array results)
       generatedQuery: mongoQuery,
       metadata: {

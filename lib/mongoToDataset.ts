@@ -93,7 +93,7 @@ function inferFieldType(values: any[]): string {
   return "mixed";
 }
 
-export function mongoToDataset(docs: any[]) {
+export default function mongoToDataset(docs: any[]) {
   if (!docs || docs.length === 0) {
     return { schema: { fields: [] }, rows: [], sampleRows: [] };
   }

@@ -1,7 +1,7 @@
 // app/api/database/[dbType]/connect/route.ts
 import { NextResponse } from "next/server";
 import { DataProcessor } from "@/lib/dataProcessor";
-import { mongoToDataset } from "@/lib/mongoToDataset";
+import mongoToDataset from "@/lib/mongoToDataset";
 
 export async function POST(
   request: Request,
