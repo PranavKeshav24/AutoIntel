@@ -1,17 +1,15 @@
 // app/api/database/[dbType]/connect/route.ts
 import { NextResponse } from "next/server";
-import { DataProcessor } from "@/lib/dataProcessor";
 import { mongoToDataset } from "@/lib/mongoToDataset";
 
 export async function POST(
   request: Request,
-  { params }: { params: { dbType: string } }
+  context: { params: { dbType: string } }
 ) {
-
   try {
     const body = await request.json();
     const { connectionString } = body || {};
-    const { dbType } = await params;
+    const { dbType } = context.params;
 
     if (!connectionString) {
       return NextResponse.json(
@@ -21,7 +19,6 @@ export async function POST(
     }
 
     // Placeholder: implement actual DB connections here
-    let rows: any[] = [];
     let sourceName = "";
 
     switch (dbType) {
@@ -58,69 +55,65 @@ export async function POST(
           { status: 501 }
         );
 
-case "mongodb": {
-  sourceName = "MongoDB Database";
+      case "mongodb": {
+        sourceName = "MongoDB Database";
 
-  try {
-    const { MongoClient } = await import("mongodb");
-    const client = new MongoClient(connectionString);
+        try {
+          const { MongoClient } = await import("mongodb");
+          const client = new MongoClient(connectionString);
+          await client.connect();
 
-    await client.connect();
+          const adminDb = client.db().admin();
+          const dbList = await adminDb.listDatabases();
 
-    
-    const adminDb = client.db().admin();
-    const dbList = await adminDb.listDatabases();
+          const allDocs: any[] = [];
+          let totalCollections = 0;
 
-    const allDocs: any[] = [];
-    let totalCollections = 0;
+          for (const dbInfo of dbList.databases) {
+            const db = client.db(dbInfo.name);
+            const collections = await db.listCollections().toArray();
 
-    for (const dbInfo of dbList.databases) {
-      const db = client.db(dbInfo.name);
-      const collections = await db.listCollections().toArray();
+            for (const colInfo of collections) {
+              const col = db.collection(colInfo.name);
+              const docs = await col.find({}).limit(200).toArray();
 
-      for (const colInfo of collections) {
-        const col = db.collection(colInfo.name);
-        const docs = await col.find({}).limit(200).toArray();
-        
-        if (docs.length > 0) {
-          allDocs.push(...docs);
-          totalCollections++;
+              if (docs.length > 0) {
+                allDocs.push(...docs);
+                totalCollections++;
+              }
+            }
+          }
+
+          if (allDocs.length === 0) {
+            return NextResponse.json(
+              { error: "No data found across all databases" },
+              { status: 400 }
+            );
+          }
+
+          const dataset = mongoToDataset(allDocs);
+          return NextResponse.json({
+            dataset,
+            totalCollections,
+            totalDocs: allDocs.length,
+          });
+        } catch (err: any) {
+          console.error("MONGODB CONNECT ERROR:", err);
+          return NextResponse.json(
+            { error: err.message || "Failed to connect to MongoDB" },
+            { status: 500 }
+          );
         }
       }
-    }
 
-    if (allDocs.length === 0) {
-      return NextResponse.json(
-        { error: "No data found across all databases" },
-        { status: 400 }
-      );
-    }
-
-    const dataset = mongoToDataset(allDocs);
-    return NextResponse.json({
-      dataset,
-      totalCollections,
-      totalDocs: allDocs.length
-    });
-
-  } catch (err: any) {
-    console.error("MONGODB CONNECT ERROR:", err);
-    return NextResponse.json(
-      { error: err.message || "Failed to connect to MongoDB" },
-      { status: 500 }
-    );
-  }
-}
-
-         default:
+      default:
         return NextResponse.json(
-          { error: "Unsupported database type" },
+          { error: `Unsupported database type: ${dbType}` },
           { status: 400 }
         );
     }
   } catch (error: any) {
-    const { dbType } = await params;
-    console.error(`Error in ${dbType} connect API:`, error);
+    console.error(`Error in database connect API:`, error);
     return NextResponse.json(
       { error: error?.message || "Database connection failed" },
       { status: 500 }
