@@ -7758,6 +7758,7 @@ snapshots:
   '@playwright/test@1.56.1':
     dependencies:
       playwright: 1.56.1
+    optional: true
 
   '@plotly/d3-sankey-circular@0.33.1':
     dependencies:
@@ -12214,6 +12215,7 @@ snapshots:
       playwright-core: 1.56.1
     optionalDependencies:
       fsevents: 2.3.2
+    optional: true
 
   plotly.js-dist-min@3.2.0: {}
 
@@ -12892,7 +12894,8 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  source-map@0.6.1: {}
+  source-map@0.6.1:
+    optional: true
 
   space-separated-tokens@2.0.2: {}
 
