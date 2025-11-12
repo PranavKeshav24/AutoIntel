@@ -1,4 +1,3 @@
-// app/api/text/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { CohereEmbeddings } from "@langchain/cohere";
 import { PineconeStore } from "@langchain/pinecone";
@@ -101,8 +100,41 @@ export async function POST(req: NextRequest) {
 
     // System prompt
     const systemPrompt = new SystemMessage(
-      `You are a data analysis assistant. You have access to a dataset
-      Your task is to:
+      `You are a data visualization expert. Analyze this dataset and suggest 4 diverse visualizations using Plotly.
+      Create 6-10 diverse visualizations (bar, line, scatter, pie, box, histogram, etc.) that best represent the data patterns.
+
+Respond with a JSON array of visualization specs. Each spec should have:
+{
+  "id": "unique-id",
+  "title": "Chart Title",
+  "description": "What this chart shows",
+  "plotlyData": [
+    {
+      "x": [...],
+      "y": [...],
+      "type": "bar|scatter|line|pie|box|histogram|heatmap",
+      "mode": "lines|markers|lines+markers",
+      "name": "Series Name",
+      "marker": { "color": "blue" }
+    }
+  ],
+  "plotlyLayout": {
+    "xaxis": { "title": "X Axis Label" },
+    "yaxis": { "title": "Y Axis Label" },
+    "title": "Chart Title"
+  }
+}
+
+IMPORTANT: 
+- Include actual data values in the plotlyData arrays, not empty arrays
+- Use the actual column names from the schema
+- Choose appropriate chart types for the data
+- For categorical data, use bar or pie charts
+- For time series, use line charts
+- For distributions, use histograms or box plots
+- Keep the data arrays reasonable (sample if needed)
+
+Return ONLY a JSON array, no markdown formatting.Your task is to:
 1. Answer the user's query based on the data
 2. Suggest relevant visualizations using Plotly specification, only if the user has asked for it in the query.
 3. Provide follow-up questions

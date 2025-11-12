@@ -1,4 +1,3 @@
-// app/api/text/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { CohereEmbeddings } from "@langchain/cohere";
 import { PineconeStore } from "@langchain/pinecone";

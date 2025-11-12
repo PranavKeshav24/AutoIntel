@@ -15,6 +15,7 @@ type ChatAssistantProps = {
   downloadLoading: boolean;
   selectedVizCount: number;
   isSQLSource: boolean;
+  isTextSource?: boolean;
   onInputChange: (value: string) => void;
   onSendMessage: () => void;
   onDownloadReport: (html: string, format: "html" | "pdf") => void;
@@ -27,6 +28,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   downloadLoading,
   selectedVizCount,
   isSQLSource,
+  isTextSource,
   onInputChange,
   onSendMessage,
   onDownloadReport,
