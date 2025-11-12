@@ -1,15 +1,16 @@
 // app/api/database/[dbType]/connect/route.ts
 import { NextResponse } from "next/server";
+import { DataProcessor } from "@/lib/dataProcessor";
 import { mongoToDataset } from "@/lib/mongoToDataset";
 
 export async function POST(
   request: Request,
-  context: { params: { dbType: string } }
+  context: { params: Promise<{ dbType: string }> }
 ) {
   try {
     const body = await request.json();
     const { connectionString } = body || {};
-    const { dbType } = context.params;
+    const { dbType } = await context.params;
 
     if (!connectionString) {
       return NextResponse.json(
@@ -19,6 +20,7 @@ export async function POST(
     }
 
     // Placeholder: implement actual DB connections here
+    let rows: any[] = [];
     let sourceName = "";
 
     switch (dbType) {
@@ -61,6 +63,7 @@ export async function POST(
         try {
           const { MongoClient } = await import("mongodb");
           const client = new MongoClient(connectionString);
+
           await client.connect();
 
           const adminDb = client.db().admin();
@@ -108,12 +111,13 @@ export async function POST(
 
       default:
         return NextResponse.json(
-          { error: `Unsupported database type: ${dbType}` },
+          { error: "Unsupported database type" },
           { status: 400 }
         );
     }
   } catch (error: any) {
-    console.error(`Error in database connect API:`, error);
+    const { dbType } = await context.params;
+    console.error(`Error in ${dbType} connect API:`, error);
     return NextResponse.json(
       { error: error?.message || "Database connection failed" },
       { status: 500 }
