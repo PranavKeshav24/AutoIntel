@@ -2,6 +2,57 @@ import { NextRequest, NextResponse } from "next/server";
 import { DataSet } from "@/lib/types";
 import pptxgen from "pptxgenjs";
 
+// Language mapping for Sarvam AI TTS
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  hi: "Hindi (हिंदी)",
+  bn: "Bengali (বাংলা)",
+  te: "Telugu (తెలుగు)",
+  mr: "Marathi (मराठी)",
+  ta: "Tamil (தமிழ்)",
+  gu: "Gujarati (ગુજરાતી)",
+  kn: "Kannada (ಕನ್ನಡ)",
+  ml: "Malayalam (മലയാളം)",
+  pa: "Punjabi (ਪੰਜਾਬੀ)",
+  or: "Odia (ଓଡ଼ିଆ)",
+  as: "Assamese (অসমীয়া)",
+  ur: "Urdu (اردو)",
+};
+
+// Sarvam AI language code mapping
+const SARVAM_LANGUAGE_CODES: Record<string, string> = {
+  en: "en-IN",
+  hi: "hi-IN",
+  bn: "bn-IN",
+  te: "te-IN",
+  mr: "mr-IN",
+  ta: "ta-IN",
+  gu: "gu-IN",
+  kn: "kn-IN",
+  ml: "ml-IN",
+  pa: "pa-IN",
+  or: "or-IN",
+  as: "as-IN",
+  ur: "ur-IN",
+};
+
+// Sarvam AI speaker mapping (adjust based on available speakers)
+const SARVAM_SPEAKERS: Record<string, string> = {
+  en: "karun",
+  hi: "karun",
+  bn: "karun",
+  te: "karun",
+  mr: "karun",
+  ta: "karun",
+  gu: "karun",
+  kn: "karun",
+  ml: "karun",
+  pa: "karun",
+  or: "karun",
+  as: "karun",
+  ur: "karun",
+};
+
 export async function POST(request: NextRequest) {
   try {
     const {
@@ -10,11 +61,14 @@ export async function POST(request: NextRequest) {
       selectedReports,
       config,
       reportContext,
+      language = "en", // Default to English
     } = await request.json();
 
     if (!config?.apiKey) {
       return NextResponse.json({ error: "Missing API key" }, { status: 400 });
     }
+
+    const languageName = LANGUAGE_NAMES[language] || "English";
 
     // Prepare context for LLM
     const schemaSummary =
@@ -42,6 +96,12 @@ export async function POST(request: NextRequest) {
 
     const systemPrompt = `You are a data storytelling expert. Create an engaging presentation story based on the provided data, visualizations, and reports.
 
+IMPORTANT: Generate ALL content in ${languageName}. This includes:
+- Presentation title and subtitle
+- All slide titles
+- All bullet points
+- All speaker notes
+
 Dataset Schema:
 ${schemaSummary}
 
@@ -57,23 +117,23 @@ User Context:
 ${reportContext || "No additional context"}
 
 Generate a compelling presentation with:
-1. Title slide with an engaging title and subtitle
+1. Title slide with an engaging title and subtitle (in ${languageName})
 2. Slides for each visualization with:
-   - Clear slide title
-   - 3-5 bullet points explaining insights
-   - Speaker notes (2-3 sentences for narration, conversational tone)
-3. Slides for report summaries with key findings
-4. Conclusion slide with actionable takeaways
+   - Clear slide title (in ${languageName})
+   - 3-5 bullet points explaining insights (in ${languageName})
+   - Speaker notes (2-3 sentences for narration, conversational tone, in ${languageName})
+3. Slides for report summaries with key findings (in ${languageName})
+4. Conclusion slide with actionable takeaways (in ${languageName})
 
 Respond in JSON format:
 {
-  "presentationTitle": "Main Title",
-  "presentationSubtitle": "Subtitle",
+  "presentationTitle": "Main Title in ${languageName}",
+  "presentationSubtitle": "Subtitle in ${languageName}",
   "slides": [
     {
-      "title": "Slide Title",
-      "content": ["Bullet point 1", "Bullet point 2", "Bullet point 3"],
-      "speakerNotes": "This slide shows... The key insight is...",
+      "title": "Slide Title in ${languageName}",
+      "content": ["Bullet point 1 in ${languageName}", "Bullet point 2 in ${languageName}", "Bullet point 3 in ${languageName}"],
+      "speakerNotes": "Speaker notes in ${languageName}. Natural and conversational.",
       "visualizationId": "viz-id or null",
       "reportId": "report-id or null",
       "type": "title|content|visualization|report|conclusion"
@@ -81,13 +141,13 @@ Respond in JSON format:
   ]
 }
 
-Make speaker notes engaging and suitable for text-to-speech. Keep them under 100 words per slide.`;
+Make speaker notes engaging and suitable for text-to-speech. Keep them under 100 words per slide. Use natural, conversational ${languageName}.`;
 
     const messages = [
       { role: "system", content: systemPrompt },
       {
         role: "user",
-        content: "Generate a compelling data story presentation",
+        content: `Generate a compelling data story presentation in ${languageName}`,
       },
     ];
 
@@ -134,26 +194,41 @@ Make speaker notes engaging and suitable for text-to-speech. Keep them under 100
       throw new Error("Failed to generate story structure");
     }
 
-    // Generate TTS audio for each slide's speaker notes
-    const slidesWithAudio = await Promise.all(
-      storyData.slides.map(async (slide: any, idx: number) => {
-        try {
-          const audioBase64 = await generateTTS(slide.speakerNotes);
-          return {
-            ...slide,
-            audioData: audioBase64,
-            slideNumber: idx + 1,
-          };
-        } catch (error) {
-          console.error(`TTS generation failed for slide ${idx + 1}:`, error);
-          return {
-            ...slide,
-            audioData: null,
-            slideNumber: idx + 1,
-          };
+    // Generate TTS audio for each slide's speaker notes with delays
+    const slidesWithAudio = [];
+    for (let idx = 0; idx < storyData.slides.length; idx++) {
+      const slide = storyData.slides[idx];
+
+      try {
+        // Add delay between TTS requests (except for first one)
+        if (idx > 0) {
+          await delay(1000); // 1 second delay between requests
         }
-      })
-    );
+
+        const audioBase64 = await generateSarvamTTS(
+          slide.speakerNotes,
+          language
+        );
+        slidesWithAudio.push({
+          ...slide,
+          audioData: audioBase64,
+          slideNumber: idx + 1,
+        });
+
+        console.log(
+          `✓ Generated ${languageName} audio for slide ${idx + 1}/${
+            storyData.slides.length
+          }`
+        );
+      } catch (error) {
+        console.error(`TTS generation failed for slide ${idx + 1}:`, error);
+        slidesWithAudio.push({
+          ...slide,
+          audioData: null,
+          slideNumber: idx + 1,
+        });
+      }
+    }
 
     // Create PowerPoint presentation
     const pptxData = await createPowerPoint(
@@ -167,6 +242,8 @@ Make speaker notes engaging and suitable for text-to-speech. Keep them under 100
       presentationSubtitle: storyData.presentationSubtitle,
       slides: slidesWithAudio,
       pptxData: pptxData,
+      language: language,
+      languageName: languageName,
     });
   } catch (error: any) {
     console.error("Error in story generation API:", error);
@@ -177,152 +254,91 @@ Make speaker notes engaging and suitable for text-to-speech. Keep them under 100
   }
 }
 
-// Generate TTS using multiple fallback options
-async function generateTTS(text: string): Promise<string> {
-  const HF_TOKEN = process.env.HUGGINGFACE_API_KEY;
+// Add delay helper for rate limiting
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  // Try HuggingFace TTS with proper error handling
-  if (HF_TOKEN) {
-    const endpoints = [
-      {
-        model: "hexgrad/Kokoro-82M",
-        url: "https://router.huggingface.co/fal-ai/fal-ai/kokoro/american-english",
+// Generate TTS using Sarvam AI
+async function generateSarvamTTS(
+  text: string,
+  language: string = "en",
+  retryCount = 0
+): Promise<string> {
+  const SARVAM_API_KEY = process.env.SARVAM_API_KEY;
+  const MAX_RETRIES = 2;
+
+  if (!SARVAM_API_KEY) {
+    console.warn("SARVAM_API_KEY not found in environment variables");
+    return "";
+  }
+
+  try {
+    // Add exponential backoff delay for retries
+    if (retryCount > 0) {
+      const delayMs = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+      console.log(`Waiting ${delayMs}ms before retry ${retryCount}...`);
+      await delay(delayMs);
+    }
+
+    const targetLanguageCode = SARVAM_LANGUAGE_CODES[language] || "en-IN";
+    const speaker = SARVAM_SPEAKERS[language] || "karun";
+
+    console.log(
+      `Trying Sarvam AI TTS for ${language} (${targetLanguageCode}) with speaker ${speaker} (attempt ${
+        retryCount + 1
+      })...`
+    );
+
+    // Call Sarvam AI TTS API
+    const response = await fetch("https://api.sarvam.ai/text-to-speech", {
+      method: "POST",
+      headers: {
+        "api-subscription-key": SARVAM_API_KEY,
+        "Content-Type": "application/json",
       },
-      {
-        model: "ResembleAI/chatterbox",
-        url: "https://router.huggingface.co/fal-ai/fal-ai/chatterbox/text-to-speech",
-      },
-    ];
+      body: JSON.stringify({
+        text: text.substring(0, 500), // Limit text length
+        target_language_code: targetLanguageCode,
+        speaker: speaker,
+        pitch: 0,
+        pace: 1.0,
+        loudness: 1.0,
+        speech_sample_rate: 22050,
+        enable_preprocessing: true,
+        model: "bulbul:v2",
+      }),
+    });
 
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`Trying TTS with ${endpoint.model}...`);
-
-        const response = await fetch(endpoint.url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${HF_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            inputs: text,
-            options: {
-              wait_for_model: true,
-            },
-          }),
-        });
-
-        if (response.ok) {
-          const contentType = response.headers.get("content-type");
-
-          // Check if response is audio
-          if (
-            contentType?.includes("audio") ||
-            contentType?.includes("application/octet-stream")
-          ) {
-            const audioBuffer = await response.arrayBuffer();
-            const base64Audio = Buffer.from(audioBuffer).toString("base64");
-            console.log(
-              `✓ TTS success with ${endpoint.model}, audio size: ${audioBuffer.byteLength} bytes`
-            );
-            return base64Audio;
-          } else {
-            console.warn(
-              `${endpoint.model} returned non-audio response:`,
-              contentType
-            );
-          }
-        } else {
-          const errorText = await response.text();
-          console.warn(
-            `${endpoint.model} failed with status ${response.status}:`,
-            errorText
-          );
-        }
-      } catch (err: any) {
-        console.warn(`${endpoint.model} error:`, err.message);
-        continue;
-      }
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Sarvam AI API error: ${response.status} - ${errorText}`);
     }
-  } else {
-    console.warn("HUGGINGFACE_API_KEY not found in environment variables");
-  }
 
-  // Try ElevenLabs if available
-  const ELEVENLABS_KEY = process.env.ELEVENLABS_API_KEY;
-  if (ELEVENLABS_KEY) {
-    try {
-      console.log("Trying ElevenLabs TTS...");
-      const response = await fetch(
-        "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
-        {
-          method: "POST",
-          headers: {
-            "xi-api-key": ELEVENLABS_KEY,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: text,
-            model_id: "eleven_monolingual_v1",
-            voice_settings: {
-              stability: 0.5,
-              similarity_boost: 0.75,
-            },
-          }),
-        }
-      );
+    const result = await response.json();
 
-      if (response.ok) {
-        const audioBuffer = await response.arrayBuffer();
-        console.log(
-          `✓ ElevenLabs TTS success, audio size: ${audioBuffer.byteLength} bytes`
-        );
-        return Buffer.from(audioBuffer).toString("base64");
-      }
-    } catch (err: any) {
-      console.warn("ElevenLabs TTS failed:", err.message);
+    // Sarvam AI returns base64 audio in the response
+    if (result.audios && result.audios.length > 0) {
+      const base64Audio = result.audios[0];
+      console.log(`✓ Sarvam AI TTS success for ${language}, audio generated`);
+      return base64Audio;
+    } else {
+      throw new Error("No audio data in Sarvam AI response");
     }
-  }
+  } catch (err: any) {
+    const errorMsg = err.message || String(err);
+    console.warn(`Sarvam AI TTS failed (attempt ${retryCount + 1}):`, errorMsg);
 
-  // Try Google Cloud TTS
-  const GOOGLE_API_KEY = process.env.GOOGLE_CLOUD_API_KEY;
-  if (GOOGLE_API_KEY) {
-    try {
-      console.log("Trying Google Cloud TTS...");
-      const response = await fetch(
-        `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GOOGLE_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            input: { text },
-            voice: {
-              languageCode: "en-US",
-              name: "en-US-Neural2-J",
-            },
-            audioConfig: {
-              audioEncoding: "MP3",
-              speakingRate: 1.0,
-              pitch: 0.0,
-            },
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✓ Google Cloud TTS success");
-        return data.audioContent;
-      }
-    } catch (err: any) {
-      console.warn("Google TTS failed:", err.message);
+    // Retry on failure
+    if (retryCount < MAX_RETRIES) {
+      return generateSarvamTTS(text, language, retryCount + 1);
     }
-  }
 
-  console.warn("All TTS services failed, will use browser TTS");
-  return "";
+    console.warn(
+      `All TTS attempts failed for ${language}, will use browser TTS`
+    );
+    return "";
+  }
 }
 
 // Create PowerPoint presentation with proper charts
@@ -340,7 +356,7 @@ async function createPowerPoint(
 
   // Title Slide
   const titleSlide = pptx.addSlide();
-  titleSlide.background = { color: "0f172a" }; // slate-900
+  titleSlide.background = { color: "0f172a" };
 
   titleSlide.addText(storyData.presentationTitle, {
     x: 0.5,
@@ -379,6 +395,11 @@ async function createPowerPoint(
     const slide = pptx.addSlide();
     slide.background = { color: "FFFFFF" };
 
+    // Check if this slide has a visualization
+    const viz = slideData.visualizationId
+      ? visualizations.find((v: any) => v.id === slideData.visualizationId)
+      : null;
+
     // Add header bar
     slide.addShape(pptx.ShapeType.rect, {
       x: 0,
@@ -399,56 +420,83 @@ async function createPowerPoint(
       color: "FFFFFF",
     });
 
-    // Add content bullets
-    if (slideData.content && slideData.content.length > 0) {
-      const bulletText = slideData.content.map((item: string) => ({
-        text: item,
-        options: {
-          bullet: true,
-          fontSize: 18,
-          color: "1e293b",
-          lineSpacing: 28,
-        },
-      }));
+    // Layout: If there's a visualization, split content and chart side-by-side
+    if (viz) {
+      // Left side: Content bullets
+      if (slideData.content && slideData.content.length > 0) {
+        const bulletText = slideData.content.map((item: string) => ({
+          text: item,
+          options: {
+            bullet: true,
+            fontSize: 14,
+            color: "1e293b",
+            lineSpacing: 22,
+          },
+        }));
 
-      slide.addText(bulletText, {
-        x: 0.8,
-        y: 1.2,
-        w: 8.4,
-        h: 3,
-      });
-    }
-
-    // Add visualization chart
-    if (slideData.visualizationId) {
-      const viz = visualizations.find(
-        (v: any) => v.id === slideData.visualizationId
-      );
-
-      if (viz) {
-        try {
-          await addChartToSlide(slide, viz, pptx);
-        } catch (err) {
-          console.error("Failed to add chart:", err);
-          addChartPlaceholder(slide, viz, pptx);
-        }
-      }
-    }
-
-    // Add report content
-    if (slideData.reportId) {
-      const report = reports.find((r: any) => r.id === slideData.reportId);
-      if (report) {
-        const reportText = report.summary || report.content || "Report Summary";
-        slide.addText(reportText.substring(0, 500), {
-          x: 0.8,
-          y: 4.2,
-          w: 8.4,
-          h: 2.5,
-          fontSize: 14,
-          color: "334155",
-          valign: "top",
+        slide.addText(bulletText, {
+          x: 0.5,
+          y: 1.0,
+          w: 4.5,
+          h: 4.5,
         });
+      }
+
+      // Right side: Visualization chart
+      try {
+        await addChartToSlide(slide, viz, pptx, {
+          x: 5.2,
+          y: 1.0,
+          w: 4.5,
+          h: 4.5,
+        });
+        console.log(`✓ Added visualization to slide: ${viz.title}`);
+      } catch (err) {
+        console.error("Failed to add chart:", err);
+        addChartPlaceholder(slide, viz, pptx, {
+          x: 5.2,
+          y: 1.0,
+          w: 4.5,
+          h: 4.5,
+        });
+      }
+    } else {
+      // No visualization - use full width for content
+      if (slideData.content && slideData.content.length > 0) {
+        const bulletText = slideData.content.map((item: string) => ({
+          text: item,
+          options: {
+            bullet: true,
+            fontSize: 18,
+            color: "1e293b",
+            lineSpacing: 28,
+          },
+        }));
+
+        slide.addText(bulletText, {
+          x: 0.8,
+          y: 1.2,
+          w: 8.4,
+          h: 4,
+        });
+      }
+
+      // Add report content if present
+      if (slideData.reportId) {
+        const report = reports.find((r: any) => r.id === slideData.reportId);
+        if (report) {
+          const reportText =
+            report.summary || report.content || "Report Summary";
+          slide.addText(reportText.substring(0, 500), {
+            x: 0.8,
+            y: 1.2,
+            w: 8.4,
+            h: 4,
+            fontSize: 14,
+            color: "334155",
+            valign: "top",
+          });
+        }
       }
     }
 
@@ -474,101 +522,173 @@ async function createPowerPoint(
   return pptxBlob as string;
 }
 
-// Add chart to slide with proper conversion
-async function addChartToSlide(slide: any, viz: any, pptx: any) {
-  const plotlyData = Array.isArray(viz.plotlyData)
-    ? viz.plotlyData
-    : [viz.plotlyData];
-  const trace = plotlyData[0];
+// Add chart to slide with proper conversion and custom positioning
+async function addChartToSlide(
+  slide: any,
+  viz: any,
+  pptx: any,
+  customPos?: { x: number; y: number; w: number; h: number }
+) {
+  try {
+    const plotlyData = Array.isArray(viz.plotlyData)
+      ? viz.plotlyData
+      : [viz.plotlyData];
+    const trace = plotlyData[0];
 
-  if (!trace || !trace.x || !trace.y) {
-    addChartPlaceholder(slide, viz, pptx);
-    return;
-  }
+    if (!trace) {
+      console.warn("No trace data found for visualization:", viz.id);
+      addChartPlaceholder(slide, viz, pptx, customPos);
+      return;
+    }
 
-  const chartType = trace.type || "bar";
+    const chartType = (trace.type || "bar").toLowerCase();
+    console.log(`Adding chart type: ${chartType} for viz: ${viz.id}`);
 
-  // Convert to PptxGenJS format
-  if (chartType === "pie") {
-    const chartData = [
-      {
-        name: trace.name || "Data",
-        labels: trace.labels || [],
-        values: trace.values || [],
-      },
-    ];
-
-    slide.addChart(pptx.charts.PIE, chartData, {
+    // Default positioning (can be overridden)
+    const pos = customPos || {
       x: 0.5,
-      y: 4.2,
+      y: 1.5,
       w: 9,
-      h: 3,
-      title: viz.title,
-      showTitle: true,
-      titleFontSize: 14,
-      showLegend: true,
-      legendPos: "r",
-    });
-  } else if (chartType === "bar" || chartType === "column") {
-    const chartData = [
-      {
-        name: trace.name || "Series 1",
-        labels: Array.isArray(trace.x) ? trace.x : [],
-        values: Array.isArray(trace.y) ? trace.y : [],
-      },
-    ];
+      h: 4,
+    };
 
-    slide.addChart(pptx.charts.BAR, chartData, {
-      x: 0.5,
-      y: 4.2,
-      w: 9,
-      h: 3,
-      title: viz.title,
-      showTitle: true,
-      titleFontSize: 14,
-      showLegend: true,
-      legendPos: "r",
-      barDir: chartType === "bar" ? "bar" : "col",
-    });
-  } else if (chartType === "line" || chartType === "scatter") {
-    const chartData = [
-      {
-        name: trace.name || "Series 1",
-        labels: Array.isArray(trace.x) ? trace.x : [],
-        values: Array.isArray(trace.y) ? trace.y : [],
-      },
-    ];
+    // Handle pie charts
+    if (chartType === "pie") {
+      const labels = trace.labels || trace.x || [];
+      const values = trace.values || trace.y || [];
 
-    slide.addChart(pptx.charts.LINE, chartData, {
-      x: 0.5,
-      y: 4.2,
-      w: 9,
-      h: 3,
-      title: viz.title,
-      showTitle: true,
-      titleFontSize: 14,
-      showLegend: true,
-      legendPos: "r",
-    });
-  } else {
-    addChartPlaceholder(slide, viz, pptx);
+      if (labels.length === 0 || values.length === 0) {
+        console.warn("Pie chart missing labels or values");
+        addChartPlaceholder(slide, viz, pptx, customPos);
+        return;
+      }
+
+      const chartData = [
+        {
+          name: trace.name || "Data",
+          labels: labels.map((l: any) => String(l)),
+          values: values.map((v: any) => Number(v) || 0),
+        },
+      ];
+
+      slide.addChart(pptx.charts.PIE, chartData, {
+        ...pos,
+        title: viz.title || "Chart",
+        showTitle: false, // Title already in slide header
+        titleFontSize: 14,
+        showLegend: true,
+        legendPos: "r",
+        legendFontSize: 10,
+      });
+
+      console.log(`✓ Added pie chart successfully at position`, pos);
+      return;
+    }
+
+    // Handle bar/column charts
+    if (chartType === "bar" || chartType === "column") {
+      const xData = Array.isArray(trace.x) ? trace.x : [];
+      const yData = Array.isArray(trace.y) ? trace.y : [];
+
+      if (xData.length === 0 || yData.length === 0) {
+        console.warn("Bar chart missing x or y data");
+        addChartPlaceholder(slide, viz, pptx, customPos);
+        return;
+      }
+
+      const chartData = [
+        {
+          name: trace.name || "Series 1",
+          labels: xData.map((x: any) => String(x)),
+          values: yData.map((y: any) => Number(y) || 0),
+        },
+      ];
+
+      slide.addChart(pptx.charts.BAR, chartData, {
+        ...pos,
+        title: viz.title || "Chart",
+        showTitle: false,
+        titleFontSize: 14,
+        showLegend: true,
+        legendPos: "r",
+        legendFontSize: 10,
+        barDir: chartType === "column" ? "col" : "bar",
+        catAxisLabelFontSize: 9,
+        valAxisLabelFontSize: 9,
+      });
+
+      console.log(`✓ Added bar/column chart successfully at position`, pos);
+      return;
+    }
+
+    // Handle line/scatter charts
+    if (chartType === "line" || chartType === "scatter") {
+      const xData = Array.isArray(trace.x) ? trace.x : [];
+      const yData = Array.isArray(trace.y) ? trace.y : [];
+
+      if (xData.length === 0 || yData.length === 0) {
+        console.warn("Line chart missing x or y data");
+        addChartPlaceholder(slide, viz, pptx, customPos);
+        return;
+      }
+
+      const chartData = [
+        {
+          name: trace.name || "Series 1",
+          labels: xData.map((x: any) => String(x)),
+          values: yData.map((y: any) => Number(y) || 0),
+        },
+      ];
+
+      slide.addChart(pptx.charts.LINE, chartData, {
+        ...pos,
+        title: viz.title || "Chart",
+        showTitle: false,
+        titleFontSize: 14,
+        showLegend: true,
+        legendPos: "r",
+        legendFontSize: 10,
+        lineSize: 2,
+        catAxisLabelFontSize: 9,
+        valAxisLabelFontSize: 9,
+      });
+
+      console.log(`✓ Added line/scatter chart successfully at position`, pos);
+      return;
+    }
+
+    // Unsupported chart type - use placeholder
+    console.warn(`Unsupported chart type: ${chartType}`);
+    addChartPlaceholder(slide, viz, pptx, customPos);
+  } catch (err) {
+    console.error("Error adding chart to slide:", err);
+    addChartPlaceholder(slide, viz, pptx, customPos);
   }
 }
 
 // Add a styled chart placeholder
-function addChartPlaceholder(slide: any, viz: any, pptx: any) {
-  slide.addShape(pptx.ShapeType.rect, {
+function addChartPlaceholder(
+  slide: any,
+  viz: any,
+  pptx: any,
+  customPos?: { x: number; y: number; w: number; h: number }
+) {
+  const pos = customPos || {
     x: 0.5,
-    y: 4.2,
+    y: 1.5,
     w: 9,
-    h: 3,
+    h: 4,
+  };
+
+  slide.addShape(pptx.ShapeType.rect, {
+    ...pos,
     fill: { color: "f1f5f9" },
     line: { color: "cbd5e1", width: 1 },
   });
 
   slide.addText("📊", {
-    x: 4.5,
-    y: 4.8,
+    x: pos.x + pos.w / 2 - 0.5,
+    y: pos.y + pos.h / 2 - 0.5,
     w: 1,
     h: 0.6,
     fontSize: 40,
@@ -576,9 +696,9 @@ function addChartPlaceholder(slide: any, viz: any, pptx: any) {
   });
 
   slide.addText(viz.title, {
-    x: 1,
-    y: 5.5,
-    w: 8,
+    x: pos.x + 0.5,
+    y: pos.y + pos.h / 2 + 0.2,
+    w: pos.w - 1,
     h: 0.5,
     fontSize: 16,
     bold: true,
@@ -587,9 +707,9 @@ function addChartPlaceholder(slide: any, viz: any, pptx: any) {
   });
 
   slide.addText(viz.description || "Visualization", {
-    x: 1,
-    y: 6.1,
-    w: 8,
+    x: pos.x + 0.5,
+    y: pos.y + pos.h / 2 + 0.8,
+    w: pos.w - 1,
     h: 0.4,
     fontSize: 12,
     color: "64748b",
