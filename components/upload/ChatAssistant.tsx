@@ -1,11 +1,35 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Download, Presentation, FileText } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  Download,
+  Presentation,
+  FileText,
+  Languages,
+} from "lucide-react";
 import { Message } from "@/lib/types";
 import { SQLResultDisplay } from "./SQLResultDisplay";
+
+// Language options with native names
+const SUPPORTED_LANGUAGES = [
+  { code: "en", name: "English", native: "English" },
+  { code: "hi", name: "Hindi", native: "हिंदी" },
+  { code: "bn", name: "Bengali", native: "বাংলা" },
+  { code: "te", name: "Telugu", native: "తెలుగు" },
+  { code: "mr", name: "Marathi", native: "मराठी" },
+  { code: "ta", name: "Tamil", native: "தமிழ்" },
+  { code: "gu", name: "Gujarati", native: "ગુજરાતી" },
+  { code: "kn", name: "Kannada", native: "ಕನ್ನಡ" },
+  { code: "ml", name: "Malayalam", native: "മലയാളം" },
+  { code: "pa", name: "Punjabi", native: "ਪੰਜਾਬੀ" },
+  { code: "or", name: "Odia", native: "ଓଡ଼ିଆ" },
+  { code: "as", name: "Assamese", native: "অসমীয়া" },
+  { code: "ur", name: "Urdu", native: "اردو" },
+];
 
 type ChatAssistantProps = {
   messages: Message[];
@@ -17,11 +41,13 @@ type ChatAssistantProps = {
   reports: Array<{ id: string; title: string; content: string; html: string }>;
   isSQLSource: boolean;
   storyLoading?: boolean;
+  selectedLanguage?: string;
   onInputChange: (value: string) => void;
   onSendMessage: () => void;
   onDownloadReport: (html: string, format: "html" | "pdf") => void;
-  onGenerateStory?: () => void;
+  onGenerateStory?: (language?: string) => void;
   onToggleReportSelection: (reportId: string) => void;
+  onLanguageChange?: (language: string) => void;
   selectedReportIds: Set<string>;
 };
 
@@ -35,24 +61,77 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   reports,
   isSQLSource,
   storyLoading = false,
+  selectedLanguage = "en",
   onInputChange,
   onSendMessage,
   onDownloadReport,
   onGenerateStory,
   onToggleReportSelection,
+  onLanguageChange,
   selectedReportIds,
 }) => {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const [showLanguageSelect, setShowLanguageSelect] = useState(false);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const totalSelected = selectedVizCount + selectedReportCount;
+  const currentLanguage =
+    SUPPORTED_LANGUAGES.find((l) => l.code === selectedLanguage) ||
+    SUPPORTED_LANGUAGES[0];
 
   return (
     <Card className="p-6 sticky top-4">
-      <h2 className="text-xl font-semibold mb-4">AI Assistant</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold">AI Assistant</h2>
+
+        {/* Language Selector */}
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowLanguageSelect(!showLanguageSelect)}
+            className="flex items-center gap-2"
+            aria-label="Select story language"
+          >
+            <Languages className="h-4 w-4" />
+            <span className="text-sm">{currentLanguage.native}</span>
+          </Button>
+
+          {showLanguageSelect && (
+            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+              <div className="p-2">
+                <p className="text-xs font-semibold text-slate-500 px-2 py-1">
+                  Select Story Language
+                </p>
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <button
+                    key={lang.code}
+                    onClick={() => {
+                      onLanguageChange?.(lang.code);
+                      setShowLanguageSelect(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition ${
+                      lang.code === selectedLanguage
+                        ? "bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-medium"
+                        : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">{lang.native}</span>
+                      <span className="text-xs text-slate-500">
+                        {lang.name}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Selection Summary */}
       {totalSelected > 0 && (
@@ -68,13 +147,14 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
               selected
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              These will be included in your story presentation
+              Story will be generated in{" "}
+              <strong>{currentLanguage.native}</strong>
             </p>
           </div>
 
           {onGenerateStory && (
             <Button
-              onClick={onGenerateStory}
+              onClick={() => onGenerateStory(selectedLanguage)}
               disabled={storyLoading}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               size="lg"
@@ -82,12 +162,12 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
               {storyLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generating Story...
+                  Generating {currentLanguage.native} Story...
                 </>
               ) : (
                 <>
                   <Presentation className="h-4 w-4 mr-2" />
-                  Generate Story Presentation
+                  Generate Story in {currentLanguage.native}
                 </>
               )}
             </Button>
