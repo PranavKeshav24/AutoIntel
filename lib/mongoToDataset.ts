@@ -6,7 +6,6 @@ import {
   Int32,
 } from "mongodb";
 
-/** Normalize scalar & BSON values */
 function normalizeScalar(value: any): any {
   if (value == null) return null;
 
@@ -24,7 +23,6 @@ function normalizeScalar(value: any): any {
   return value;
 }
 
-/** Normalize embedded objects *without* deep flattening */
 function normalizeObjectShallow(obj: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -34,7 +32,6 @@ function normalizeObjectShallow(obj: Record<string, any>): Record<string, any> {
     } else if (Array.isArray(v)) {
       out[k] = v.map(normalizeScalar);
     } else if (v && typeof v === "object") {
-      // Keep object, but normalize its internal scalars
       const inner: Record<string, any> = {};
       for (const [ik, iv] of Object.entries(v)) {
         inner[ik] = normalizeScalar(iv);
@@ -47,7 +44,6 @@ function normalizeObjectShallow(obj: Record<string, any>): Record<string, any> {
   return out;
 }
 
-/** Flatten only one level: parent.child = value */
 function flattenOneLevel(obj: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -65,13 +61,11 @@ function flattenOneLevel(obj: Record<string, any>): Record<string, any> {
   return out;
 }
 
-/** Fully normalize a document */
 function normalizeDoc(doc: any): Record<string, any> {
   const base = normalizeObjectShallow(doc);
   return flattenOneLevel(base);
 }
 
-/** Infer field type from multiple rows */
 function inferFieldType(values: any[]): string {
   const filtered = values.filter(v => v !== null && v !== undefined);
 
@@ -93,7 +87,7 @@ function inferFieldType(values: any[]): string {
   return "mixed";
 }
 
-export function mongoToDataset(docs: any[]) {
+export default function mongoToDataset(docs: any[]) {
   if (!docs || docs.length === 0) {
     return { schema: { fields: [] }, rows: [], sampleRows: [] };
   }

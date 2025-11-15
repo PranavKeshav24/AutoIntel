@@ -59,7 +59,6 @@ export async function apiFetch<T = any>(
   return (await res.text()) as unknown as T;
 }
 
-// Auth APIs
 export async function registerUser(body: {
   name: string;
   email: string;
@@ -73,12 +72,10 @@ export async function loginUser(body: { email: string; password: string }) {
     method: "POST",
     body,
   });
-  // Expect backend to return tokens; if string, try to parse
   try {
     const parsed = JSON.parse(resp as unknown as string);
     setTokens(parsed.access_token, parsed.refresh_token);
   } catch {
-    // ignore
   }
   return resp;
 }
@@ -129,7 +126,6 @@ export async function deleteUser() {
   return apiFetch<string>("/user", { method: "DELETE" });
 }
 
-// SQL proxy endpoints (question param)
 export async function queryPostgres(question: string) {
   return apiFetch<string>(
     `/postgresql?question=${encodeURIComponent(question)}`,

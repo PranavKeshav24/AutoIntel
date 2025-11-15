@@ -3,7 +3,7 @@ import { MongoClient, Db, MongoServerError } from "mongodb";
 import { z } from "zod";
 import { createMongoPrompt } from "@/lib/mongoLangChain";
 import { getLing1TLLM } from "@/app/api/llm";
-import { mongoToDataset } from "@/lib/mongoToDataset";
+import mongoToDataset from "@/lib/mongoToDataset";
 
 
 const MongoOperationSchema = z.enum([
@@ -32,7 +32,6 @@ const RequestBodySchema = z.object({
   dryRun: z.boolean().optional().default(false),
 });
 
-// --- Types ---
 type MongoOperation = z.infer<typeof MongoOperationSchema>;
 type MongoQuery = z.infer<typeof MongoQuerySchema>;
 type RequestBody = z.infer<typeof RequestBodySchema>;
@@ -53,7 +52,6 @@ interface ApiResponse {
   };
 }
 
-// --- Error Codes ---
 enum ErrorCode {
   VALIDATION_ERROR = "VALIDATION_ERROR",
   LLM_PARSING_ERROR = "LLM_PARSING_ERROR",
@@ -65,25 +63,21 @@ enum ErrorCode {
   UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
 
-// --- Constants ---
 const CONNECTION_TIMEOUT = 10_000;
-const QUERY_TIMEOUT = 30_000; // Max time for query execution
+const QUERY_TIMEOUT = 30_000; 
 const MAX_RESULT_SIZE = 10_000;
 const DANGEROUS_OPERATIONS = ["updateMany", "deleteMany"];
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 5 * 60 * 1000; 
 
-// Simple in-memory cache (use Redis in production)
 const queryCache = new Map<string, { result: any; timestamp: number }>();
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
-// --- Rate Limiting ---
 const RATE_LIMIT = {
   MAX_REQUESTS: 10,
-  WINDOW_MS: 60_000, // 1 minute
+  WINDOW_MS: 60_000, 
 };
 
 function getRateLimitKey(req: Request): string {
-  // Use IP address or user ID in production
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
   return `rate_limit:${ip}`;
 }
@@ -105,13 +99,11 @@ function checkRateLimit(key: string): boolean {
   return true;
 }
 
-// --- Input Sanitization ---
 function sanitizeInput(input: string): string {
-  // Remove potential injection patterns
   return input
-    .replace(/[<>]/g, "") // Remove angle brackets
-    .replace(/\${.*?}/g, "") // Remove template literals
-    .replace(/`/g, "'") // Replace backticks
+    .replace(/[<>]/g, "") 
+    .replace(/\${.*?}/g, "") 
+    .replace(/`/g, "'") 
     .trim();
 }
 
@@ -119,7 +111,6 @@ function sanitizeConnectionString(connStr: string): string {
   return connStr.replace(/\/\/([^:]+):([^@]+)@/, "//*****:*****@");
 }
 
-// --- Caching ---
 function getCacheKey(schema: string, userRequest: string): string {
   return `cache:${schema.slice(0, 100)}:${userRequest}`;
 }
@@ -140,7 +131,6 @@ function getFromCache(key: string): any | null {
 function setCache(key: string, result: any): void {
   queryCache.set(key, { result, timestamp: Date.now() });
 
-  // Cleanup old entries (simple LRU)
   if (queryCache.size > 100) {
     const oldestKey = queryCache.keys().next().value;
     if (oldestKey) {
@@ -149,7 +139,6 @@ function setCache(key: string, result: any): void {
   }
 }
 
-// --- Query Parsing & Validation ---
 function parseGeneratedQuery(queryStr: string): MongoQuery {
   let parsed: any;
 
@@ -163,7 +152,6 @@ function parseGeneratedQuery(queryStr: string): MongoQuery {
     };
   }
 
-  // Validate with Zod
   const validationResult = MongoQuerySchema.safeParse(parsed);
   if (!validationResult.success) {
     throw {
@@ -175,7 +163,6 @@ function parseGeneratedQuery(queryStr: string): MongoQuery {
 
   const mongoQuery = validationResult.data;
 
-  // Safety check for dangerous operations
   if (DANGEROUS_OPERATIONS.includes(mongoQuery.operation)) {
     if (
       !mongoQuery.query?.filter ||
@@ -208,7 +195,6 @@ async function inferSchema(db: Db, collectionName: string, sampleSize = 5) {
 }
 
 
-// --- Query Execution ---
 async function executeMongoOperation(
   db: Db,
   mongoQuery: MongoQuery,
@@ -231,7 +217,6 @@ async function executeMongoOperation(
     };
   }
 
-  // Add timeout to options
   const safeOptions = {
     ...options,
     maxTimeMS: QUERY_TIMEOUT,
@@ -254,7 +239,6 @@ async function executeMongoOperation(
 
       case "aggregate": {
         const pipeline = Array.isArray(query) ? query : [query];
-        // Add $limit to pipeline if not present
         const hasLimit = pipeline.some((stage: any) => stage.$limit);
         if (!hasLimit) {
           pipeline.push({ $limit: MAX_RESULT_SIZE });
@@ -331,7 +315,6 @@ async function executeMongoOperation(
   } catch (err: any) {
     if (err instanceof MongoServerError) {
       if (err.code === 50) {
-        // MaxTimeMSExpired
         throw {
           code: ErrorCode.TIMEOUT_ERROR,
           message: `Query exceeded maximum execution time of ${QUERY_TIMEOUT}ms`,
@@ -349,7 +332,6 @@ async function executeMongoOperation(
 
   const executionTimeMs = Date.now() - startTime;
 
-  // Normalize MongoDB documents
   const normalized = Array.isArray(result) ? normalizeMongoDocs(result) : result;
 
   return {
@@ -363,17 +345,14 @@ async function executeMongoOperation(
   };
 }
 
-// Helper function to normalize MongoDB documents
 function normalizeMongoDocs(docs: any[]) {
   return docs.map(doc => {
     const newDoc = { ...doc };
 
-    // Convert ObjectId → string
     if (newDoc._id && typeof newDoc._id === "object" && newDoc._id.toString) {
       newDoc._id = newDoc._id.toString();
     }
 
-    // Fix fields incorrectly stored as JSON strings
     for (const key in newDoc) {
       if (
         typeof newDoc[key] === "string" &&
@@ -382,7 +361,6 @@ function normalizeMongoDocs(docs: any[]) {
         try {
           newDoc[key] = JSON.parse(newDoc[key]);
         } catch {
-          // ignore if not valid json
         }
       }
     }
@@ -391,7 +369,6 @@ function normalizeMongoDocs(docs: any[]) {
   });
 }
 
-// --- Connection Management ---
 async function connectWithRetry(
   connectionString: string,
   maxRetries: number = 2
@@ -424,13 +401,11 @@ async function connectWithRetry(
   };
 }
 
-// --- Main API Handler ---
 export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
   let client: MongoClient | null = null;
   const requestStartTime = Date.now();
 
   try {
-    // Rate limiting
     const rateLimitKey = getRateLimitKey(req);
     if (!checkRateLimit(rateLimitKey)) {
       return NextResponse.json(
@@ -443,7 +418,6 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       );
     }
 
-    // Parse and validate request
     const rawBody = await req.json();
     const validationResult = RequestBodySchema.safeParse(rawBody);
 
@@ -461,11 +435,9 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     const body = validationResult.data;
     let { schema, userRequest, connectionString, dryRun } = body;
 
-    // Connect to MongoDB with retry
     client = await connectWithRetry(connectionString);
     const dbInstance = client.db();
 
-    // Infer schema automatically if none provided
     if (!schema || schema.trim() === "" || schema.trim() === "{}") {
       const collections = await dbInstance.listCollections().toArray();
       const inferredSchemas: any = {};
@@ -475,11 +447,9 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       schema = JSON.stringify(inferredSchemas, null, 2);
     }
 
-    // Sanitize inputs
     const sanitizedSchema = sanitizeInput(schema);
     const sanitizedRequest = sanitizeInput(userRequest);
 
-    // Check cache for read operations
     const cacheKey = getCacheKey(sanitizedSchema, sanitizedRequest);
     const cachedResult = getFromCache(cacheKey);
 
@@ -497,13 +467,11 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       });
     }
 
-    // Generate query with LLM
     console.log(`[MongoDB API] Generating query for: "${sanitizedRequest.slice(0, 50)}..."`);
     const prompt = await createMongoPrompt(sanitizedSchema, sanitizedRequest);
     const llm = getLing1TLLM();
     const generatedQueryStr = await llm.call(prompt);
 
-    // Parse and validate generated query
     const mongoQuery = parseGeneratedQuery(generatedQueryStr);
 
     console.log(`[MongoDB API] Generated query:`, {
@@ -512,12 +480,10 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     });
   
 
-    // Execute query
     const { result, metadata } = await executeMongoOperation(dbInstance, mongoQuery, dryRun);
 
     const totalTimeMs = Date.now() - requestStartTime;
 
-    // Cache read operations only
     if (!dryRun && ["find", "aggregate", "countDocuments"].includes(mongoQuery.operation)) {
       setCache(cacheKey, { result, query: mongoQuery, metadata });
     }
@@ -527,17 +493,14 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
         `(${totalTimeMs}ms, affected: ${metadata.affectedDocuments})`
     );
 
-    // Convert MongoDB documents → dataset format for analysis tools
-    // Only convert array results (find, aggregate) to dataset format
-    // Other operations (count, insert, update, delete) return metadata objects
     const dataset = Array.isArray(result) && result.length > 0 
       ? mongoToDataset(result) 
       : null;
 
     return NextResponse.json({
       success: true,
-      result, // Always include the raw result
-      dataset, // Dataset format for analyze/report/visualize (only for array results)
+      result: result.answer, 
+      dataset, 
       generatedQuery: mongoQuery,
       metadata: {
         ...metadata,
@@ -550,7 +513,6 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
   } catch (err: any) {
     const totalTimeMs = Date.now() - requestStartTime;
 
-    // Handle custom error format
     const errorCode = err.code || ErrorCode.UNKNOWN_ERROR;
     const statusCode = err.statusCode || 500;
     const errorMessage = err.message || "Internal server error";

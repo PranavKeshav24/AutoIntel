@@ -1,10 +1,4 @@
-/**
- * MongoDB query generation prompt template.
- * 
- * This template is used to convert natural language requests into MongoDB queries.
- * It supports both LangChain PromptTemplate (via {{schema}} and {{input}} variables)
- * and standalone usage (via buildMongoPrompt function).
- */
+
 export const mongoPromptTemplate = `
 Convert natural language to MongoDB queries (Node.js driver syntax).
 
@@ -126,13 +120,9 @@ Request: "Users tagged 'premium' in Boston"
 Generate query. Return JSON only.
 `;
 
-/**
- * Options for building MongoDB prompts with runtime values.
- */
+
 export interface BuildMongoPromptOptions {
-  /** ISO 8601 date string. Defaults to current date/time. */
   currentDate?: string;
-  /** IANA timezone identifier. Defaults to 'UTC'. */
   timezone?: string;
 }
 
@@ -169,7 +159,6 @@ export function buildMongoPrompt(
   userInput: string,
   options?: BuildMongoPromptOptions
 ): string {
-  // Input validation
   if (!schema || typeof schema !== 'string' || !schema.trim()) {
     throw new Error('Schema is required and must be a non-empty string');
   }
@@ -178,11 +167,9 @@ export function buildMongoPrompt(
     throw new Error('User input is required and must be a non-empty string');
   }
 
-  // Get runtime values with defaults
   const currentDate = options?.currentDate || new Date().toISOString();
   const timezone = options?.timezone || 'UTC';
 
-  // Replace all occurrences of each placeholder using global regex
   return mongoPromptTemplate
     .replace(/\{\{schema\}\}/g, schema.trim())
     .replace(/\{\{input\}\}/g, userInput.trim())
