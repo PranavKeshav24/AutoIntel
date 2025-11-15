@@ -150,6 +150,13 @@ export function DatabaseHandler({ onDataLoaded, onError, dbType }: any) {
         body: JSON.stringify({ connectionString }),
       });
 
+      const ex = await fetch(`/api/db/info`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionString }),
+      });
+      console.log("DB INFO EX", await ex.json());
+
       if (!response.ok) throw new Error("Failed to connect to database");
 
       const data = await response.json();
