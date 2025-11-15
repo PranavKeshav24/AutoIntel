@@ -88,11 +88,13 @@ Sample Data:
 ${JSON.stringify(sampleRows, null, 2)}
 
 Field Cardinality (unique value counts from sample rows):
-${schema.fields.map(f => {
-  const values = sampleRows.map(r => r[f.name]);
-  const unique = new Set(values.filter(v => v != null)).size;
-  return `- ${f.name}: ${unique} unique values`;
-}).join("\n")}
+${schema.fields
+  .map((f) => {
+    const values = sampleRows.map((r) => r[f.name]);
+    const unique = new Set(values.filter((v) => v != null)).size;
+    return `- ${f.name}: ${unique} unique values`;
+  })
+  .join("\n")}
 
 Visualization Rules:
 - Use only fields appearing in the schema
@@ -138,19 +140,22 @@ Output Format (strict JSON):
 Return JSON only. No markdown.`;
 
     // Call OpenRouter API
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-        ...(config.referer && { "HTTP-Referer": config.referer }),
-        ...(config.title && { "X-Title": config.title }),
-      },
-      body: JSON.stringify({
-        model: config.model || "openai/gpt-oss-20b:free",
-        messages: [{ role: "system", content: systemPrompt }],
-      }),
-    });
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+          ...(config.referer && { "HTTP-Referer": config.referer }),
+          ...(config.title && { "X-Title": config.title }),
+        },
+        body: JSON.stringify({
+          model: config.model || "meta-llama/llama-4-maverick:free",
+          messages: [{ role: "system", content: systemPrompt }],
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -164,7 +169,10 @@ Return JSON only. No markdown.`;
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
-      return NextResponse.json({ error: "No content received from LLM" }, { status: 500 });
+      return NextResponse.json(
+        { error: "No content received from LLM" },
+        { status: 500 }
+      );
     }
 
     // Remove any accidental code fences
@@ -174,7 +182,10 @@ Return JSON only. No markdown.`;
     try {
       visualizations = JSON.parse(cleaned);
     } catch {
-      return NextResponse.json({ error: "Failed to parse LLM JSON" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to parse LLM JSON" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({

@@ -35,6 +35,9 @@ importers:
       '@langchain/community':
         specifier: ^1.0.0
         version: 1.0.0(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/client-s3@3.927.0)(@aws-sdk/credential-provider-node@3.927.0)(@browserbasehq/sdk@2.6.0)(@browserbasehq/stagehand@1.14.0(@playwright/test@1.56.1)(deepmerge@4.3.1)(dotenv@17.2.3)(openai@6.8.1(ws@8.18.3)(zod@4.1.12))(zod@4.1.12))(@ibm-cloud/watsonx-ai@1.7.2)(@langchain/core@1.0.3(openai@6.8.1(ws@8.18.3)(zod@4.1.12)))(@pinecone-database/pinecone@6.1.3)(@smithy/util-utf8@2.3.0)(fast-xml-parser@5.2.5)(google-auth-library@10.5.0)(googleapis@164.1.0)(ibm-cloud-sdk-core@5.4.3)(ignore@5.3.2)(jsonwebtoken@9.0.2)(lodash@4.17.21)(mongodb@7.0.0(@aws-sdk/credential-providers@3.927.0))(openai@6.8.1(ws@8.18.3)(zod@4.1.12))(pdf-parse@2.4.5)(playwright@1.56.1)(ws@8.18.3)
+      '@huggingface/inference':
+        specifier: ^4.13.2
+        version: 4.13.2
       '@langchain/core':
         specifier: ^1.0.3
         version: 1.0.3(openai@6.8.1(ws@8.18.3)(zod@4.1.12))
@@ -618,6 +621,17 @@ packages:
     resolution: {integrity: sha512-79Dv+3mDF7i+2ajj7SkypSKHhl1cbln1OGavqrsF7p6mbUv11xpqpacPsGDCTRvCSjEEIez2ef1NveSVL3b0Ag==}
     peerDependencies:
       react-hook-form: ^7.0.0
+
+  '@huggingface/inference@4.13.2':
+    resolution: {integrity: sha512-cqs/2Ni3nTiE/iIsaC4gvZboXS/4FFItL+/1WMaP8PFQEpoH1V8bjFodNvkzzFthIxuYziD9tr0N28Db2iE/zQ==}
+    engines: {node: '>=18'}
+
+  '@huggingface/jinja@0.5.1':
+    resolution: {integrity: sha512-yUZLld4lrM9iFxHCwFQ7D1HW2MWMwSbeB7WzWqFYDWK+rEb+WldkLdAJxUPOmgICMHZLzZGVcVjFh3w/YGubng==}
+    engines: {node: '>=18'}
+
+  '@huggingface/tasks@0.19.63':
+    resolution: {integrity: sha512-hmd8e5fdjRiIJE7/EYWXS+Pm2SAu89xjZEgfZddN10ubWqlelXLyj2YgHZrVDEVkVA+5+ImMZUpQIez7b2//fw==}
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -7266,6 +7280,15 @@ snapshots:
   '@hookform/resolvers@3.10.0(react-hook-form@7.66.0(react@18.2.0))':
     dependencies:
       react-hook-form: 7.66.0(react@18.2.0)
+
+  '@huggingface/inference@4.13.2':
+    dependencies:
+      '@huggingface/jinja': 0.5.1
+      '@huggingface/tasks': 0.19.63
+
+  '@huggingface/jinja@0.5.1': {}
+
+  '@huggingface/tasks@0.19.63': {}
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:

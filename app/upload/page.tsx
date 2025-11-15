@@ -45,6 +45,7 @@ export default function UploadPage() {
   const [error, setError] = useState<string>("");
   const [openRouterKey, setOpenRouterKey] = useState<string>("");
   const [showAdSenseBanner, setShowAdSenseBanner] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
 
   // SQL-specific states
   const [sqlTableData, setSqlTableData] = useState<any[]>([]);
@@ -613,7 +614,7 @@ export default function UploadPage() {
               } row${data.results?.length !== 1 ? "s" : ""} returned.`,
               sqlData: {
                 question: data.question || userMessage,
-                generated_sql: data.generated_sql || "",
+                sql_query: data.sql_query || "",
                 results: data.results || [],
               },
             },
@@ -807,7 +808,7 @@ export default function UploadPage() {
     }
   };
 
-  const generateStory = async (query?: string) => {
+  const generateStory = async (query?: string, language?: string) => {
     setStoryLoading(true);
     try {
       const selectedVizContext = visualizations
@@ -853,6 +854,7 @@ export default function UploadPage() {
           selectedReports: selectedReportContext,
           config,
           reportContext: query || "Generate a compelling data story",
+          language: language || selectedLanguage,
         }),
       });
 
@@ -1057,9 +1059,11 @@ export default function UploadPage() {
               onInputChange={setInput}
               onSendMessage={sendMessage}
               onDownloadReport={handleDownloadReport}
-              onGenerateStory={() => generateStory()}
               onToggleReportSelection={toggleReportSelection}
               selectedReportIds={selectedReportIds}
+              selectedLanguage={selectedLanguage} // ✅ NEW
+              onLanguageChange={setSelectedLanguage} // ✅ NEW
+              onGenerateStory={() => generateStory(undefined, selectedLanguage)} // ✅ PASS LANGUAGE TO BACKEND
             />
           </div>
         </div>

@@ -17,7 +17,7 @@ export const SQLResultDisplay: React.FC<SQLResultDisplayProps> = ({
   if (!sqlData) return null;
 
   const copySQL = () => {
-    navigator.clipboard.writeText(sqlData.generated_sql);
+    navigator.clipboard.writeText(sqlData.sql_query);
     setCopiedSql(true);
     setTimeout(() => setCopiedSql(false), 2000);
   };
@@ -60,7 +60,7 @@ export const SQLResultDisplay: React.FC<SQLResultDisplayProps> = ({
         </div>
         <pre className="text-xs bg-white dark:bg-slate-900 p-2 rounded border-2 overflow-x-auto">
           <code className="text-black dark:text-gray-200">
-            {sqlData.generated_sql}
+            {sqlData.sql_query}
           </code>
         </pre>
       </div>
