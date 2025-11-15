@@ -40,6 +40,7 @@ type ChatAssistantProps = {
   selectedReportCount: number;
   reports: Array<{ id: string; title: string; content: string; html: string }>;
   isSQLSource: boolean;
+  isTextSource?: boolean;
   storyLoading?: boolean;
   selectedLanguage?: string;
   onInputChange: (value: string) => void;
@@ -60,6 +61,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   selectedReportCount,
   reports,
   isSQLSource,
+  isTextSource,
   storyLoading = false,
   selectedLanguage = "en",
   onInputChange,

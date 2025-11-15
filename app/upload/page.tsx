@@ -206,16 +206,42 @@ export default function UploadPage() {
     setActiveTab("table");
   };
 
+  // Add this to your UploadPage.tsx - replace the handleDataLoaded function
+
   const handleDataLoaded = async (ds: DataSet) => {
     setDataset(ds);
     setOriginalDataset(ds);
     setError("");
-    setMessages([
-      {
-        role: "assistant",
-        content: `✓ Dataset loaded! ${ds.schema.rowCount} rows × ${ds.schema.fields.length} columns from ${ds.source.kind}. Ready for analysis.`,
-      },
-    ]);
+
+    // Check if this is a text/PDF source
+    const isTextSource = ds.source.kind === "text" || ds.source.kind === "pdf";
+
+    if (isTextSource) {
+      // For text/PDF sources, show a message about indexing
+      setMessages([
+        {
+          role: "assistant",
+          content: `✓ Dataset loaded! ${ds.schema.rowCount} rows × ${ds.schema.fields.length} columns from ${ds.source.kind}.`,
+        },
+        {
+          role: "assistant",
+          content:
+            `🔄 Your document is being indexed for AI analysis. This takes 5-10 seconds.\n\n` +
+            `💡 **Please wait 10 seconds before asking questions** to ensure the system has fully processed your document.\n\n` +
+            `Why? Your document is being stored in a vector database (Pinecone) which takes a moment to propagate. ` +
+            `This ensures fast and accurate answers when you query it!`,
+        },
+      ]);
+    } else {
+      // For other sources (CSV, JSON, etc.)
+      setMessages([
+        {
+          role: "assistant",
+          content: `✓ Dataset loaded! ${ds.schema.rowCount} rows × ${ds.schema.fields.length} columns from ${ds.source.kind}. Ready for analysis.`,
+        },
+      ]);
+    }
+
     setActiveTab("table");
   };
 
@@ -338,6 +364,8 @@ export default function UploadPage() {
 
     try {
       const isSQLSource = ["postgresql", "sqlite", "mysql"].includes(dbType);
+      const isTextSource =
+        dataset?.source.kind === "text" || dataset?.source.kind === "pdf";
       const isReportRequest = /report|summary|document|pdf/i.test(userMessage);
       const isVisualizationRequest =
         /visuali[sz]ation|chart|graph|plot|show.*data/i.test(userMessage);
@@ -347,7 +375,193 @@ export default function UploadPage() {
 
       if (isStoryRequest) {
         await generateStory(userMessage);
-      } else if (isSQLSource) {
+      }
+      // ===== TEXT/PDF SOURCE HANDLING =====
+      if (isTextSource && dataset?.id) {
+        // Verify the dataset is indexed before attempting analysis
+        const verifyResponse = await fetch(
+          `/api/text/verify?datasetId=${encodeURIComponent(dataset.id)}`
+        );
+        if (verifyResponse.ok) {
+          const verifyData = await verifyResponse.json();
+          if (!verifyData.exists) {
+            throw new Error(
+              `Dataset not indexed. Please re-upload the document. ` +
+                `Dataset ID: ${dataset.id}. Available datasets: ${
+                  verifyData.allIndexedDatasets?.join(", ") || "none"
+                }`
+            );
+          }
+          console.log("[Chat] Dataset verified:", verifyData);
+        }
+
+        // Route to appropriate endpoint based on request type
+        if (isReportRequest) {
+          // Generate HTML report for PDF/Text
+          console.log("[Chat] Generating report for text/pdf source");
+
+          const selectedVizContext = visualizations
+            .filter((viz) => selectedVizIds.has(viz.id))
+            .map((viz) => ({
+              id: viz.id,
+              title: viz.title,
+              description: viz.description,
+              plotlyData: viz.plotlyData,
+              plotlyLayout: viz.plotlyLayout,
+            }));
+
+          const response = await fetch("/api/text/report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              datasetId: dataset.id,
+              query: userMessage,
+              config: {
+                apiKey: config.apiKey,
+                model: config.model || "gemini-2.5-flash-lite",
+              },
+              selectedVisualizations: selectedVizContext,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage =
+              errorData.details ||
+              errorData.error ||
+              "Failed to generate report";
+            console.error("Report endpoint error:", errorData);
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `✓ Report generated successfully! ${
+                selectedVizContext.length > 0
+                  ? `Including ${selectedVizContext.length} selected visualization(s).`
+                  : ""
+              } Click below to download.`,
+              html: data.answer, // The report route returns HTML in the answer field
+            },
+          ]);
+
+          setLoading(false);
+          return;
+        } else if (isVisualizationRequest) {
+          // Request visualizations for PDF/Text
+          console.log("[Chat] Requesting visualizations for text/pdf source");
+
+          const response = await fetch("/api/text/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              datasetId: dataset.id,
+              query:
+                userMessage +
+                " Please suggest relevant visualizations for this data.",
+              config: {
+                apiKey: config.apiKey,
+                model: config.model || "gemini-2.5-flash-lite",
+              },
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage =
+              errorData.details || errorData.error || "Failed to analyze text";
+            console.error("Analyze endpoint error:", errorData);
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+
+          // Try to extract visualizations from the response
+          let vizArray = [];
+          try {
+            // The response might contain JSON with visualizations
+            const jsonMatch = data.answer.match(
+              /\{[\s\S]*"visualizations"[\s\S]*\}/
+            );
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              vizArray = parsed.visualizations || [];
+            }
+          } catch (e) {
+            console.warn("Could not parse visualizations from response:", e);
+          }
+
+          if (vizArray.length > 0) {
+            setVisualizations((prev) => [...prev, ...vizArray]);
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `✓ Generated ${vizArray.length} visualization${
+                  vizArray.length !== 1 ? "s" : ""
+                } from your query!\n\n${data.answer}`,
+              },
+            ]);
+            setActiveTab("charts");
+          } else {
+            // No visualizations, just show the answer
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: data.answer,
+              },
+            ]);
+          }
+
+          setLoading(false);
+          return;
+        } else {
+          // Regular analysis for PDF/Text
+          console.log("[Chat] Regular analysis for text/pdf source");
+
+          const response = await fetch("/api/text/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              datasetId: dataset.id,
+              query: userMessage,
+              config: {
+                apiKey: config.apiKey,
+                model: config.model || "gemini-2.5-flash-lite",
+              },
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage =
+              errorData.details || errorData.error || "Failed to analyze text";
+            console.error("Analyze endpoint error:", errorData);
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: data.answer,
+            },
+          ]);
+
+          setLoading(false);
+          return;
+        }
+      }
+
+      // ===== SQL SOURCE HANDLING =====
+      if (isSQLSource) {
         if (isReportRequest) {
           const reportHtml = await sqlOps.generateSQLReport(userMessage);
 
@@ -406,7 +620,10 @@ export default function UploadPage() {
             },
           ]);
         }
-      } else if (dataset) {
+      }
+
+      // ===== CSV/JSON/EXCEL SOURCE HANDLING =====
+      else if (dataset) {
         if (isReportRequest) {
           const selectedVizContext = visualizations
             .filter((viz) => selectedVizIds.has(viz.id))
@@ -480,6 +697,7 @@ export default function UploadPage() {
         }
       }
     } catch (err: any) {
+      console.error("[Chat] Error:", err);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: `✗ Error: ${err.message}` },
