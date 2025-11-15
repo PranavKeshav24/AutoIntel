@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import mongoToDataset from "@/lib/mongoToDataset";
 
-/**
- * Configuration for LLM API calls
- */
+
 interface LLMConfig {
   apiKey: string;
   model?: string;
@@ -11,17 +9,13 @@ interface LLMConfig {
   title?: string;
 }
 
-/**
- * Request body structure
- */
+
 interface VisualizeRequest {
   documents: unknown[];
   config: LLMConfig;
 }
 
-/**
- * Plotly visualization specification
- */
+
 interface PlotlyVisualization {
   id: string;
   title: string;
@@ -43,7 +37,6 @@ export async function POST(req: NextRequest) {
     const body: VisualizeRequest = await req.json();
     const { documents, config } = body;
 
-    // Validate inputs
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       return NextResponse.json(
         { error: "Documents array is required and must not be empty" },
@@ -58,7 +51,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Convert documents into structured dataset
     const dataset = mongoToDataset(documents);
     const { rows, schema, sampleRows } = dataset;
 
@@ -69,14 +61,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ Build schema summary with field names and inferred types
     const schemaSummary = schema.fields
       .map((f) => `- ${f.name}: ${f.type}`)
       .join("\n");
 
     const totalRecords = rows.length;
 
-    // ✅ Build LLM prompt (now grounded in real schema → no hallucination)
     const systemPrompt = `You are a data visualization expert creating accurate and useful charts using Plotly.
 
 Dataset Schema (field: type):
@@ -137,7 +127,6 @@ Output Format (strict JSON):
 
 Return JSON only. No markdown.`;
 
-    // Call OpenRouter API
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -167,7 +156,6 @@ Return JSON only. No markdown.`;
       return NextResponse.json({ error: "No content received from LLM" }, { status: 500 });
     }
 
-    // Remove any accidental code fences
     const cleaned = content.replace(/```json|```/g, "").trim();
 
     let visualizations: PlotlyVisualization[];

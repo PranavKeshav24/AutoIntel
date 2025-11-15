@@ -2,13 +2,9 @@ import { PromptTemplate } from "@langchain/core/prompts";
 import { mongoPromptTemplate } from "./prompts";
 
 const MAX_CACHE_SIZE = 50;
-const MAX_SCHEMA_SIZE = 50_000; // 50KB limit for individual schemas
+const MAX_SCHEMA_SIZE = 50_000; 
 
-/**
- * LRU cache using native Map.
- * Note: For >100 entries or high-throughput scenarios, consider using
- * a dedicated LRU library like 'lru-cache' for better performance.
- */
+
 const promptCache = new Map<string, PromptTemplate>();
 
 /**
@@ -37,22 +33,18 @@ export async function createMongoPrompt(
 
   const trimmedSchema = schema.trim();
   
-  // Reject excessively large schemas to prevent memory issues
   if (trimmedSchema.length > MAX_SCHEMA_SIZE) {
     throw new Error(
       `Schema too large (${trimmedSchema.length} chars). Maximum allowed: ${MAX_SCHEMA_SIZE} chars`
     );
   }
 
-  // Check cache and refresh LRU order
   let prompt = promptCache.get(trimmedSchema);
   
   if (prompt) {
-    // Move to end (most recently used)
     promptCache.delete(trimmedSchema);
     promptCache.set(trimmedSchema, prompt);
   } else {
-    // Evict least recently used (first entry) if at capacity
     if (promptCache.size >= MAX_CACHE_SIZE) {
       const firstKey = promptCache.keys().next().value;
       if (firstKey !== undefined) {
@@ -73,16 +65,12 @@ export async function createMongoPrompt(
   });
 }
 
-/**
- * Clears the prompt template cache. Useful for testing or memory management.
- */
+
 export function clearPromptCache(): void {
   promptCache.clear();
 }
 
-/**
- * Returns current cache statistics for monitoring.
- */
+
 export function getCacheStats() {
   return {
     size: promptCache.size,

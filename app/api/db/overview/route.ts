@@ -23,30 +23,29 @@ interface RequestBody {
   documentProjection?: Record<string, 0 | 1>;
   page?: number;
   pageSize?: number;
-  // Multi-database support
-  database?: string; // Single database mode
-  databases?: string[]; // Multi database mode
-  mode?: "single" | "multi" | "all"; // Scan mode
-  excludeSystemDbs?: boolean; // Filter out admin/local/config
-  // Advanced options
-  globalTimeoutMs?: number; // Global timeout for entire scan
-  maxDocSizeKB?: number; // Max document size to include
-  sort?: Record<string, 1 | -1>; // Sorting for document pagination
-  flattenDocuments?: boolean; // Flatten nested objects
+  database?: string; 
+  databases?: string[]; 
+  mode?: "single" | "multi" | "all"; 
+  excludeSystemDbs?: boolean; 
+ 
+  globalTimeoutMs?: number; 
+  maxDocSizeKB?: number; 
+  sort?: Record<string, 1 | -1>; 
+  flattenDocuments?: boolean; 
 }
 
 interface FieldStatistics {
   type: string[];
-  usageFrequency: number; // Percentage of docs that have this field
+  usageFrequency: number; 
   nullPercentage: number;
-  uniqueValueCount?: number; // Only for small datasets
-  exampleValues?: JsonValue[]; // Sample of unique values
+  uniqueValueCount?: number;
+  exampleValues?: JsonValue[]; 
 }
 
 interface CollectionStats {
-  storageSize: number; // Bytes
-  totalIndexSize: number; // Bytes
-  avgDocumentSize: number; // Bytes
+  storageSize: number; 
+  totalIndexSize: number; 
+  avgDocumentSize: number; 
   storageSizeMB: string;
   totalIndexSizeMB: string;
   avgDocumentSizeKB: string;
@@ -87,9 +86,6 @@ interface ClusterOverview {
   scannedDatabases: number;
 }
 
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
 
 const CONFIG = {
   DEFAULT_SAMPLE_SIZE: 10,
@@ -99,21 +95,15 @@ const CONFIG = {
   OPERATION_TIMEOUT: 30000,
   DEFAULT_PAGE_SIZE: 10,
   MAX_PAGE_SIZE: 50,
-  MAX_UNIQUE_VALUES: 1000, // Don't count unique values beyond this
-  FIELD_STATS_SAMPLE_SIZE: 100, // Sample size for field statistics
-  DEFAULT_GLOBAL_TIMEOUT: 120000, // 2 minutes default for entire scan
-  MAX_GLOBAL_TIMEOUT: 300000, // 5 minutes max
-  DEFAULT_MAX_DOC_SIZE_KB: 1024, // 1MB default
-  MAX_DOC_SIZE_KB: 10240, // 10MB max
+  MAX_UNIQUE_VALUES: 1000, 
+  FIELD_STATS_SAMPLE_SIZE: 100, 
+  DEFAULT_GLOBAL_TIMEOUT: 120000, 
+  MAX_GLOBAL_TIMEOUT: 300000, 
+  DEFAULT_MAX_DOC_SIZE_KB: 1024, 
+  MAX_DOC_SIZE_KB: 10240, 
 };
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
 
-/**
- * Infers the type of a JSON value with better handling of edge cases
- */
 function inferType(value: JsonValue): string {
   if (value === null) return "null";
   if (Array.isArray(value)) {
@@ -128,9 +118,7 @@ function inferType(value: JsonValue): string {
   return typeof value;
 }
 
-/**
- * Validates and sanitizes the sample size parameter
- */
+
 function validateSampleSize(size?: number): number {
   if (size === undefined) return CONFIG.DEFAULT_SAMPLE_SIZE;
 
@@ -151,9 +139,7 @@ function validateSampleSize(size?: number): number {
   return parsed;
 }
 
-/**
- * Flattens nested objects into dot notation
- */
+
 function flattenObject(
   obj: Record<string, JsonValue>,
   prefix: string = ""
@@ -166,10 +152,10 @@ function flattenObject(
     if (value === null) {
       flattened[newKey] = null;
     } else if (Array.isArray(value)) {
-      // Keep arrays as-is (don't flatten array elements)
+    
       flattened[newKey] = value;
     } else if (typeof value === "object") {
-      // Recursively flatten nested objects
+      
       Object.assign(
         flattened,
         flattenObject(value as Record<string, JsonValue>, newKey)
@@ -182,9 +168,7 @@ function flattenObject(
   return flattened;
 }
 
-/**
- * Calculates the size of a document in KB
- */
+
 function getDocumentSizeKB(doc: Record<string, JsonValue>): number {
   try {
     const jsonStr = JSON.stringify(doc);
@@ -194,9 +178,6 @@ function getDocumentSizeKB(doc: Record<string, JsonValue>): number {
   }
 }
 
-/**
- * Validates global timeout parameter
- */
 function validateGlobalTimeout(timeout?: number): number {
   if (timeout === undefined) return CONFIG.DEFAULT_GLOBAL_TIMEOUT;
 
@@ -213,9 +194,7 @@ function validateGlobalTimeout(timeout?: number): number {
   return parsed;
 }
 
-/**
- * Validates max document size parameter
- */
+
 function validateMaxDocSize(size?: number): number {
   if (size === undefined) return CONFIG.DEFAULT_MAX_DOC_SIZE_KB;
 
@@ -235,15 +214,13 @@ function extractDatabaseFromConnectionString(connectionString: string): string {
   try {
     const url = new URL(connectionString);
     const dbName = url.pathname.replace("/", "").split("?")[0];
-    return dbName || "test"; // MongoDB default
+    return dbName || "test"; 
   } catch {
-    return "test"; // Fallback if URL parsing fails
+    return "test"; 
   }
 }
 
-/**
- * Filters out system databases
- */
+
 function filterSystemDatabases(databases: string[]): string[] {
   const systemDbs = ["admin", "local", "config"];
   return databases.filter((db) => !systemDbs.includes(db));
@@ -259,9 +236,7 @@ function validatePagination(page?: number, pageSize?: number) {
   return { page: validPage, pageSize: validPageSize };
 }
 
-/**
- * Sanitizes documents by removing sensitive fields
- */
+
 function sanitizeDocument(
   doc: Record<string, JsonValue>
 ): Record<string, JsonValue> {
@@ -285,9 +260,7 @@ function sanitizeDocument(
   return sanitized;
 }
 
-/**
- * Safely extracts database name from connection string
- */
+
 function formatBytes(bytes: number, decimals: number = 2): string {
   if (bytes === 0) return "0 Bytes";
   const k = 1024;
@@ -297,9 +270,7 @@ function formatBytes(bytes: number, decimals: number = 2): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
-/**
- * Calculates field-level statistics
- */
+
 function calculateFieldStats(
   sampleDocs: Array<Record<string, JsonValue>>,
   totalDocs: number
@@ -314,7 +285,7 @@ function calculateFieldStats(
     }
   > = {};
 
-  // Collect data from sample
+
   for (const doc of sampleDocs) {
     for (const [key, value] of Object.entries(doc)) {
       if (!fieldData[key]) {
@@ -333,22 +304,22 @@ function calculateFieldStats(
         fieldData[key].nullCount++;
       }
 
-      // Store unique values (with limit)
+      
       if (fieldData[key].values.size < CONFIG.MAX_UNIQUE_VALUES) {
         try {
           const stringValue = JSON.stringify(value);
           if (stringValue.length < 200) {
-            // Don't store huge values
+           
             fieldData[key].values.add(stringValue);
           }
         } catch {
-          // Skip values that can't be stringified
+          
         }
       }
     }
   }
 
-  // Calculate statistics
+  
   const stats: Record<string, FieldStatistics> = {};
 
   for (const [field, data] of Object.entries(fieldData)) {
@@ -361,12 +332,10 @@ function calculateFieldStats(
       nullPercentage: Math.round(nullPercentage * 100) / 100,
     };
 
-    // Add unique value count if under limit
     if (data.values.size < CONFIG.MAX_UNIQUE_VALUES) {
       stats[field].uniqueValueCount = data.values.size;
     }
 
-    // Add example values (up to 5)
     if (data.values.size > 0) {
       const examples = Array.from(data.values).slice(0, 5);
       stats[field].exampleValues = examples.map((v) => {
@@ -382,9 +351,7 @@ function calculateFieldStats(
   return stats;
 }
 
-/**
- * Fetches collection storage statistics
- */
+
 async function getCollectionStats(
   db: Db,
   collectionName: string
@@ -406,9 +373,7 @@ async function getCollectionStats(
   }
 }
 
-/**
- * Analyzes a single collection and returns its overview
- */
+
 async function analyzeCollection(
   db: Db,
   collectionName: string,
@@ -428,10 +393,8 @@ async function analyzeCollection(
 ): Promise<CollectionOverview> {
   const collection = db.collection(collectionName);
 
-  // Get document count first
   const documentCount = await collection.countDocuments();
 
-  // Check if collection is empty
   const isEmptyCollection = documentCount === 0;
 
   if (isEmptyCollection) {
@@ -454,7 +417,6 @@ async function analyzeCollection(
     };
   }
 
-  // Fetch sample documents for schema inference
   const schemaSampleSize = Math.min(
     options.sampleSize,
     CONFIG.FIELD_STATS_SAMPLE_SIZE
@@ -464,11 +426,9 @@ async function analyzeCollection(
     .limit(schemaSampleSize)
     .toArray();
 
-  // Infer schema from sampled documents
   const fieldTypes: Record<string, Set<string>> = {};
 
   for (const doc of sampleDocs) {
-    // Flatten if requested for schema inference
     const docToAnalyze = options.flattenDocuments
       ? flattenObject(doc as Record<string, JsonValue>)
       : (doc as Record<string, JsonValue>);
@@ -488,7 +448,6 @@ async function analyzeCollection(
     ])
   );
 
-  // Get indexes
   const indexes = await collection.listIndexes().toArray();
   const indexInfo = indexes.map((idx) => ({
     name: idx.name,
@@ -507,7 +466,6 @@ async function analyzeCollection(
     isEmptyCollection: false,
   };
 
-  // Add field statistics if requested
   if (options.includeFieldStats) {
     const docsForStats = options.flattenDocuments
       ? sampleDocs.map((doc) => flattenObject(doc as Record<string, JsonValue>))
@@ -516,13 +474,11 @@ async function analyzeCollection(
     overview.fieldStats = calculateFieldStats(docsForStats, documentCount);
   }
 
-  // Add collection stats if requested
   if (options.includeStats) {
     overview.collectionStats =
       (await getCollectionStats(db, collectionName)) || undefined;
   }
 
-  // Include paginated documents if requested
   if (options.includeDocuments) {
     const skip = (options.page - 1) * options.pageSize;
     const totalPages = Math.ceil(documentCount / options.pageSize);
@@ -531,14 +487,12 @@ async function analyzeCollection(
       ? collection.find({}, { projection: options.documentProjection })
       : collection.find({});
 
-    // Apply sorting if specified
     if (options.sort) {
       query = query.sort(options.sort);
     }
 
     const documents = await query.skip(skip).limit(options.pageSize).toArray();
 
-    // Filter by document size and sanitize
     const processedDocs: Record<string, JsonValue>[] = [];
     let skippedDocs = 0;
 
@@ -558,7 +512,6 @@ async function analyzeCollection(
 
       let processedDoc = sanitizeDocument(docRecord);
 
-      // Flatten if requested
       if (options.flattenDocuments) {
         processedDoc = flattenObject(processedDoc);
       }
@@ -576,7 +529,6 @@ async function analyzeCollection(
       hasPrevPage: options.page > 1,
     };
 
-    // Add warning if docs were skipped
     if (skippedDocs > 0) {
       (
         overview as any
@@ -587,20 +539,16 @@ async function analyzeCollection(
   return overview;
 }
 
-// ============================================================================
-// MAIN API HANDLER
-// ============================================================================
+
 
 export async function POST(request: NextRequest) {
   let client: MongoClient | undefined;
   const startTime = Date.now();
 
-  // 🔥 GLOBAL TIMEOUT CONTROLLER
   const controller = new AbortController();
   let timeoutId: NodeJS.Timeout | undefined;
 
   try {
-    // Parse and validate request body
     const body: RequestBody = await request.json();
 
     const sampleSize = validateSampleSize(body.sampleSize);
@@ -616,7 +564,6 @@ export async function POST(request: NextRequest) {
     const flattenDocuments = body.flattenDocuments ?? false;
     const { page, pageSize } = validatePagination(body.page, body.pageSize);
 
-    // Set global timeout
     timeoutId = setTimeout(() => {
       console.warn(
         `Global timeout reached (${globalTimeoutMs}ms), aborting scan...`
@@ -624,7 +571,6 @@ export async function POST(request: NextRequest) {
       controller.abort();
     }, globalTimeoutMs);
 
-    // Get connection string from environment variable (SECURE)
     const connectionString = body.connectionString || process.env.MONGODB_URI;
 
 
@@ -638,12 +584,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if aborted before connecting
     if (controller.signal.aborted) {
       throw new Error("Request aborted before connection");
     }
 
-    // Connect to MongoDB with timeout
     client = new MongoClient(connectionString, {
       serverSelectionTimeoutMS: CONFIG.CONNECTION_TIMEOUT,
       socketTimeoutMS: CONFIG.OPERATION_TIMEOUT,
@@ -652,14 +596,11 @@ export async function POST(request: NextRequest) {
     await client.connect();
     const admin = client.db().admin();
 
-    // ========================================================================
-    // DETERMINE WHICH DATABASES TO SCAN
-    // ========================================================================
+ 
 
     let selectedDatabases: string[] = [];
     let scanMode: "single" | "multi" | "all" = "single";
 
-    // 1️⃣ MODE: Scan ALL databases in cluster
     if (body.mode === "all") {
       scanMode = "all";
       const dbList = await admin.listDatabases();
@@ -669,7 +610,6 @@ export async function POST(request: NextRequest) {
         selectedDatabases = filterSystemDatabases(selectedDatabases);
       }
     }
-    // 2️⃣ MODE: Scan multiple specific databases
     else if (
       body.databases &&
       Array.isArray(body.databases) &&
@@ -690,12 +630,10 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    // 3️⃣ MODE: Scan single database
     else if (body.database && typeof body.database === "string") {
       scanMode = "single";
       selectedDatabases = [body.database.trim()];
     }
-    // 4️⃣ DEFAULT: Use database from connection string
     else {
       scanMode = "single";
       const defaultDb = extractDatabaseFromConnectionString(connectionString);
@@ -712,15 +650,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ========================================================================
-    // ANALYZE EACH DATABASE
-    // ========================================================================
+
 
     const clusterOverview: DatabaseOverview[] = [];
     let abortedDueToTimeout = false;
 
     for (const dbName of selectedDatabases) {
-      // Check if aborted
       if (controller.signal.aborted) {
         abortedDueToTimeout = true;
         console.warn(`Scan aborted at database: ${dbName}`);
@@ -730,10 +665,8 @@ export async function POST(request: NextRequest) {
       try {
         const db = client.db(dbName);
 
-        // List all collections in this database
         const allCollections = await db.listCollections().toArray();
 
-        // Filter collections if specified
         const collectionsToAnalyze = collectionsFilter
           ? allCollections.filter((col) => collectionsFilter.includes(col.name))
           : allCollections;
@@ -750,11 +683,9 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Analyze each collection
         const collectionSummaries: CollectionOverview[] = [];
 
         for (const { name } of collectionsToAnalyze) {
-          // Check if aborted
           if (controller.signal.aborted) {
             abortedDueToTimeout = true;
             break;
@@ -833,7 +764,6 @@ export async function POST(request: NextRequest) {
       scannedDatabases: clusterOverview.length,
     };
 
-    // Add timeout warning if aborted
     if (abortedDueToTimeout) {
       (
         response as any
@@ -877,12 +807,10 @@ export async function POST(request: NextRequest) {
       { status: isAbortError ? 408 : isConnectionError ? 503 : 500 }
     );
   } finally {
-    // Clear timeout
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
 
-    // Close MongoDB connection
     if (client) {
       try {
         await client.close();
@@ -894,28 +822,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ============================================================================
-// GET endpoint for API documentation
-// ============================================================================
+
 
 export async function GET() {
   return NextResponse.json({
     message: "MongoDB Multi-Database Explorer API",
     version: "5.0.0 - Enterprise Edition",
     features: [
-      "🔄 Multi-database scanning (single/multi/all modes)",
-      "📊 Schema inference with type detection",
-      "🔍 Empty collection detection",
-      "💾 Storage statistics (size, indexes, avg document size)",
-      "📈 Field-level statistics (usage frequency, null %, unique values, examples)",
-      "📄 Document pagination with sorting",
-      "🎯 Field projection (exclude large fields)",
-      "🔒 Sensitive data redaction",
-      "⚡ Per-collection error handling",
-      "🚫 System database filtering (admin/local/config)",
-      "⏱️ Global timeout protection",
-      "📏 Document size filtering",
-      "🗂️ Document flattening for LLM integration",
+      " Multi-database scanning (single/multi/all modes)",
+      " Schema inference with type detection",
+      " Empty collection detection",
+      " Storage statistics (size, indexes, avg document size)",
+      " Field-level statistics (usage frequency, null %, unique values, examples)",
+      " Document pagination with sorting",
+      " Field projection (exclude large fields)",
+      " Sensitive data redaction",
+      " Per-collection error handling",
+      " System database filtering (admin/local/config)",
+      "⏱ Global timeout protection",
+      " Document size filtering",
+      " Document flattening for LLM integration",
     ],
     scanModes: {
       single: "Scan one database (default or specified)",
@@ -927,14 +853,12 @@ export async function GET() {
         description:
           "Analyze MongoDB database(s) structure with enterprise features",
         body: {
-          // Database selection
           database: "string (optional) - Single database name",
           databases: "string[] (optional) - Array of database names",
           mode: "'single' | 'multi' | 'all' (optional) - Scanning mode",
           excludeSystemDbs:
             "boolean (default: true) - Filter out admin/local/config in 'all' mode",
 
-          // Analysis options
           sampleSize:
             "number (1-100, default: 10) - Sample size for schema inference",
           includeDocuments:
@@ -947,12 +871,10 @@ export async function GET() {
           documentProjection:
             "object (optional) - Fields to include/exclude, e.g., { largeField: 0 }",
 
-          // Pagination & Sorting
           page: "number (default: 1) - Page number for document pagination",
           pageSize: "number (default: 10, max: 50) - Documents per page",
           sort: "object (optional) - Sort documents, e.g., { createdAt: -1, name: 1 }",
 
-          // Advanced Options
           globalTimeoutMs: `number (default: ${CONFIG.DEFAULT_GLOBAL_TIMEOUT}, max: ${CONFIG.MAX_GLOBAL_TIMEOUT}) - Global timeout for entire scan`,
           maxDocSizeKB: `number (default: ${CONFIG.DEFAULT_MAX_DOC_SIZE_KB}, max: ${CONFIG.MAX_DOC_SIZE_KB}) - Max document size to include`,
           flattenDocuments:

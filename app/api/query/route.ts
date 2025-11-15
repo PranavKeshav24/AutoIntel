@@ -45,7 +45,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Configure LlamaIndex with the user's OpenRouter key
     Settings.llm = new OpenAIChatLLM({
       apiKey,
       model: model || process.env.NEXT_PUBLIC_OPENROUTER_MODEL,
