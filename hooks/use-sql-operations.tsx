@@ -158,8 +158,29 @@ export const useSQLOperations = (dbType: string) => {
       throw new Error(errorData.detail || "Failed to generate report");
     }
 
-    const data = await response.json();
+    let data = await response.json();
 
+    // Extract the HTML report directly from the response
+    let reportHtml = data.report || "";
+
+    // Extract body content if it exists
+    const bodyMatch = reportHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    let bodyContent = bodyMatch ? bodyMatch[1] : reportHtml;
+
+    // Add metadata section at the top
+    const metadata = data.metadata || {};
+    const metadataHtml = `
+<div class="metadata" style="background: #f0f4f8; padding: 1rem; border-left: 4px solid #3498db; margin-bottom: 2rem; font-size: 0.9rem;">
+  <strong>Summary:</strong> ${data.summary || "N/A"}<br>
+  <strong>Rows Analyzed:</strong> ${metadata.rowsAnalyzed || "N/A"} | 
+  <strong>Generated:</strong> ${
+    metadata.generatedAt
+      ? new Date(metadata.generatedAt).toLocaleString()
+      : "N/A"
+  }
+</div>`;
+
+    // Build the complete HTML
     let combinedHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -171,64 +192,25 @@ h1, h2, h3 {color: #2c3e50;}
 table {width: 100%; border-collapse: collapse; margin-bottom: 1rem;}
 th, td {border: 1px solid #ddd; padding: 0.75rem; text-align: left;}
 th {background-color: #f2f2f2;}
-.table-section {margin-bottom: 4rem; page-break-after: always; border: 2px solid #e0e0e0; padding: 2rem; border-radius: 8px; background: #fafafa;}
-.table-header {background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; margin: -2rem -2rem 2rem -2rem; border-radius: 6px 6px 0 0;}
-.table-header h2 {color: white; margin: 0; font-size: 1.5rem;}
 .metadata {background: #f0f4f8; padding: 1rem; border-left: 4px solid #3498db; margin-bottom: 1.5rem; font-size: 0.9rem;}
 .metadata strong {color: #2c3e50;}
 footer {text-align: center; margin-top: 3rem; padding: 2rem; background: #f8f9fa; border-top: 2px solid #dee2e6;}
 @media print {
-  .table-section {page-break-after: always;}
   body {margin: 0;}
 }
 </style>
 </head>
 <body>
-<h1 style="text-align: center; color: #2c3e50; margin-bottom: 0.5rem;">Comprehensive Database Analysis Report</h1>
-<p style="text-align: center; color: #7f8c8d; margin-bottom: 2rem;">Generated on: ${new Date().toLocaleString()}</p>
-<hr style="border: 0; height: 2px; background: linear-gradient(90deg, transparent, #3498db, transparent); margin-bottom: 3rem;">
-`;
-
-    let tableCount = 0;
-    Object.entries(data).forEach(([tableName, tableData]: [string, any]) => {
-      if (tableData.htmlMarkdown) {
-        tableCount++;
-        let bodyContent = tableData.htmlMarkdown;
-        const bodyMatch = bodyContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-        if (bodyMatch) {
-          bodyContent = bodyMatch[1];
-        }
-
-        bodyContent = bodyContent.replace(/<h1[^>]*>.*?<\/h1>/gi, "");
-
-        const metadata = tableData.metadata || {};
-        const metadataHtml = `
-<div class="metadata">
-  <strong>Table:</strong> ${tableName} | 
-  <strong>Rows Analyzed:</strong> ${metadata.rowsAnalyzed || "N/A"} | 
-  <strong>Generated:</strong> ${
-    metadata.generatedAt
-      ? new Date(metadata.generatedAt).toLocaleString()
-      : "N/A"
-  }
-</div>`;
-
-        combinedHtml += `
-<div class="table-section">
-<div class="table-header">
-<h2>📊 Table ${tableCount}: ${tableName}</h2>
+<div style="text-align: center; margin-bottom: 2rem;">
+<h1 style="color: #2c3e50; margin-bottom: 0.5rem;">Comprehensive Database Analysis Report</h1>
+<p style="color: #7f8c8d;">Generated on: ${new Date().toLocaleString()}</p>
 </div>
+<hr style="border: 0; height: 2px; background: linear-gradient(90deg, transparent, #3498db, transparent); margin-bottom: 2rem;">
 ${metadataHtml}
 ${bodyContent}
-</div>
-`;
-      }
-    });
-
-    combinedHtml += `
 <footer>
 <p style="margin: 0; font-weight: bold; color: #2c3e50;">Database Analysis Report</p>
-<p style="margin: 0.5rem 0 0 0; color: #7f8c8d;">Total Tables Analyzed: ${tableCount}</p>
+<p style="margin: 0.5rem 0 0 0; color: #7f8c8d;">Report generated successfully</p>
 </footer>
 </body>
 </html>`;
